@@ -2,6 +2,11 @@
 
 Windows-PDF-Editor auf Basis von **PySide6 (Qt)** und **PyMuPDF**.
 
+## ⬇️ [Neueste Version herunterladen](https://github.com/Critical-Error-149/pdf-editor/releases/latest)
+
+Dort unter „Assets“ die Datei `PDF-Editor-<Version>-portable.zip` laden, entpacken und `PDF Editor.exe` starten –
+keine Installation, kein Python nötig. Ältere Versionen: [alle Releases](https://github.com/Critical-Error-149/pdf-editor/releases).
+
 ## Starten
 
 ```
