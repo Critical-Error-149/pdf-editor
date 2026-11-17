@@ -4,7 +4,8 @@ from __future__ import annotations
 from PySide6.QtCore import Qt, QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFormLayout, QGroupBox,
-                               QHBoxLayout, QLabel, QMessageBox, QPushButton, QSlider, QSpinBox, QVBoxLayout)
+                               QHBoxLayout, QLabel, QMessageBox, QPushButton, QSlider, QSpinBox, QTabWidget,
+                               QVBoxLayout, QWidget)
 
 from . import __version__, gestures, passwords, prefs, touch_scroll, updates
 from .document import PAGE_TEMPLATES
@@ -36,6 +37,15 @@ class SettingsDialog(QDialog):
         self.qs = qs
         self.autosave = autosave
         lay = QVBoxLayout(self)
+        # Registerkarten statt einer langen Liste: alle Bereiche untereinander waren höher als der Bildschirm
+        # (Surface: 1032 px Dialog bei 912 px Platz über der Taskleiste)
+        self.tabs = QTabWidget()
+        pages = {}
+        for name in ("Darstellung", "Bedienung", "Dokumente", "Updates"):
+            page = QWidget()
+            pages[name] = QVBoxLayout(page)
+            self.tabs.addTab(page, name)
+        lay.addWidget(self.tabs)
 
         # ---- Darstellung
         box = QGroupBox("Darstellung")
@@ -52,7 +62,7 @@ class SettingsDialog(QDialog):
                               "deutlich schneller scharf)")
         self.scan.setChecked(scan_batch_enabled(qs))
         form.addWidget(self.scan)
-        lay.addWidget(box)
+        pages["Darstellung"].addWidget(box)
 
         # ---- Bildseiten
         box = QGroupBox("Bild als Seite einfügen – Voreinstellung")
@@ -71,7 +81,7 @@ class SettingsDialog(QDialog):
         self.template.addItems([t for t in PAGE_TEMPLATES if t != "Leer"])
         self.template.setCurrentText(str(qs.value("image_page/template", "Kariert")))
         f.addRow("Vorlage für den Rand:", self.template)
-        lay.addWidget(box)
+        pages["Dokumente"].addWidget(box)
 
         # ---- Bedienung
         box = QGroupBox("Bedienung")
@@ -123,7 +133,7 @@ class SettingsDialog(QDialog):
                                    "Scrollen und Zoomen schließen sie nie.")
         self.note_close.setChecked(prefs.note_close_outside())
         f.addRow(self.note_close)
-        lay.addWidget(box)
+        pages["Bedienung"].addWidget(box)
 
         # ---- Beim Start
         box = QGroupBox("Beim Programmstart")
@@ -139,7 +149,7 @@ class SettingsDialog(QDialog):
             self.start_panel.addItem(v, k)
         self.start_panel.setCurrentIndex(max(0, self.start_panel.findData(str(qs.value("start/sidebar", "last")))))
         f.addRow("Geöffnete Seitenleiste:", self.start_panel)
-        lay.addWidget(box)
+        pages["Darstellung"].addWidget(box)
 
         # ---- Gemerkte PDF-Passwörter
         if passwords.available():
@@ -151,7 +161,7 @@ class SettingsDialog(QDialog):
             clear.clicked.connect(self._forget_passwords)
             row.addWidget(clear)
             self._update_pw_label()
-            lay.addWidget(box)
+            pages["Dokumente"].addWidget(box)
 
         # ---- Updates (vorerst nur über das eigene, private GitHub-Repository)
         box = QGroupBox("Updates")
@@ -164,7 +174,7 @@ class SettingsDialog(QDialog):
                                    "heruntergeladen wird im Browser")
         self.update_btn.clicked.connect(self._check_updates)
         row.addWidget(self.update_btn)
-        lay.addWidget(box)
+        pages["Updates"].addWidget(box)
 
         # ---- Automatisch speichern
         box = QGroupBox("Automatisch speichern")
@@ -177,8 +187,10 @@ class SettingsDialog(QDialog):
         self.interval.setSuffix(" s")
         self.interval.setValue(autosave.interval)
         f.addRow("Spätestens nach:", self.interval)
-        lay.addWidget(box)
+        pages["Dokumente"].addWidget(box)
 
+        for page in pages.values():
+            page.addStretch(1)
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
