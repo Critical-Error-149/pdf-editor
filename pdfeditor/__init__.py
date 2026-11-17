@@ -12,4 +12,4 @@ APP_NAME = "PDF Editor"
 COPYRIGHT = "Copyright © 2026 Critical-Error-149"
 LICENSE_NAME = "GNU Affero General Public License, Version 3 oder später (AGPL-3.0-or-later)"
 # Versionsnummer: build.py erhöht die letzte Stelle bei jedem Build (erscheint in „Hilfe → Über“ und im ZIP-Namen)
-__version__ = "0.2.4"
+__version__ = "0.2.5"
