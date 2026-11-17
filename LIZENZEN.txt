@@ -1,0 +1,79 @@
+PDF Editor – Lizenzen und Hinweise
+==================================
+
+PDF Editor
+Copyright (C) 2026 Critical-Error-149
+
+This program is free software: you can redistribute it and/or modify it under the terms of the
+GNU Affero General Public License as published by the Free Software Foundation, either version 3
+of the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without
+even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+Affero General Public License for more details. You should have received a copy of the GNU Affero
+General Public License along with this program (file LICENSE). If not, see
+<https://www.gnu.org/licenses/>.
+
+Kurz auf Deutsch (rechtlich gilt der englische Lizenztext in LICENSE):
+  Der PDF Editor ist freie Software. Du darfst ihn kostenlos benutzen, kopieren, an andere
+  weitergeben und verändern – auch verändert weitergeben –, solange die Weitergabe wieder unter
+  der GNU AGPL Version 3 geschieht, diese Hinweise und Lizenztexte beiliegen und der Empfänger
+  den Quellcode bekommt (er liegt im Ordner „Quellcode“ bei). Das Programm wird ohne jede
+  Gewährleistung bereitgestellt.
+
+
+Enthaltene Komponenten
+----------------------
+
+Komponente                 Version   Lizenz                                   Lizenztext (Ordner „licenses“)
+PDF Editor (dieses Programm) siehe Hilfe → Über  GNU AGPL-3.0-or-later        LICENSE
+PyMuPDF / MuPDF            1.28.2    GNU AGPL-3.0 (Artifex Software, Inc.)    AGPL-3.0.txt
+Qt                         6.11.2    GNU LGPL-3.0 (The Qt Company Ltd.)       LGPL-3.0.txt, GPL-3.0.txt
+PySide6 / Shiboken6        6.11.2    GNU LGPL-3.0 (The Qt Company Ltd.)       LGPL-3.0.txt, GPL-3.0.txt
+FFmpeg (in Qt Multimedia)  7.1.5     GNU LGPL-2.1-or-later (FFmpeg-Entwickler) LGPL-2.1.txt
+Python                     3.14.0    PSF License (Python Software Foundation)  Python-PSF-LICENSE.txt
+PyInstaller (Startprogramm) 6.22.3   GPL-2.0-or-later mit Bootloader-Ausnahme   PyInstaller-COPYING.txt
+Microsoft Visual C++ Laufzeit / Universal C Runtime (VCRUNTIME140*.dll, ucrtbase.dll,
+  api-ms-win-*.dll): von Microsoft zur Weitergabe mit Programmen freigegeben.
+
+Das FFmpeg der Qt-Multimedia-Bibliothek ist eine reine LGPL-Fassung (ohne „--enable-gpl“ und ohne
+„--enable-nonfree“ gebaut; geprüft mit avcodec_configuration()).
+
+In MuPDF enthaltene Bibliotheken und Schriften (Teil von PyMuPDF, Lizenzen siehe Quellcode von MuPDF):
+  FreeType (FreeType License), HarfBuzz (MIT), jbig2dec (AGPL-3.0), Little CMS (MIT), libjpeg (IJG),
+  OpenJPEG (BSD-2-Clause), zlib (zlib), Gumbo (Apache-2.0), Extract (AGPL-3.0), Tesseract
+  (Apache-2.0), Leptonica (BSD-2-Clause), Brotli (MIT), URW++ Base-35-Schriften (Nimbus, AGPL-3.0
+  mit Schrift-Ausnahme), Noto-Schriften (SIL Open Font License).
+  Pflichthinweise:
+    Portions of this software are copyright © The FreeType Project (www.freetype.org).
+    All rights reserved.
+    This software is based in part on the work of the Independent JPEG Group.
+
+Die Schrift „PDF Sans“ (pdfeditor/fonts/PDFSans.ttf) ist die Nimbus Sans aus MuPDF, nur ins
+TrueType-Format umgewandelt (tools/make_pdf_font.py); sie steht unter derselben Lizenz wie MuPDF.
+Das Programmsymbol, die Knopf-Symbole und das Design „Modern Dark“ sind eigene Arbeit (im Code
+gezeichnet).
+
+
+Quellcode
+---------
+
+PDF Editor: vollständig im Ordner „Quellcode“ (einschließlich build.py, mit dem diese .exe gebaut
+wurde, und tools/). Bauen: Python 3.14 installieren, dann im Ordner „Quellcode“
+  python -m pip install -r requirements.txt pyinstaller
+  python build.py
+
+Unveränderte Bibliotheken – Quellcode genau dieser Versionen:
+  PyMuPDF 1.28.2 (enthält MuPDF 1.28.2):
+    https://pypi.org/project/PyMuPDF/1.28.2/#files  (Quellarchiv PyMuPDF-1.28.2.tar.gz)
+    https://github.com/pymupdf/PyMuPDF  und  https://mupdf.com/releases
+  Qt 6.11.2:        https://download.qt.io/official_releases/qt/6.11/6.11.2/single/
+  PySide6 6.11.2:   https://download.qt.io/official_releases/QtForPython/pyside6/
+                    https://code.qt.io/cgit/pyside/pyside-setup.git (Version v6.11.2)
+  FFmpeg 7.1.5:     https://ffmpeg.org/releases/ffmpeg-7.1.5.tar.xz
+  Python 3.14.0:    https://www.python.org/downloads/source/
+  PyInstaller 6.22.3: https://pypi.org/project/pyinstaller/6.22.3/#files
+
+Austauschen der LGPL-Bibliotheken: Qt, PySide6 und FFmpeg liegen als einzelne Dateien im Ordner
+„_internal“ (z. B. _internal\PySide6\Qt6Core.dll, avcodec-61.dll). Du darfst sie durch eigene,
+kompatible (auch selbst gebaute oder veränderte) Fassungen ersetzen.

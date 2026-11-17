@@ -1,0 +1,44 @@
+PDF Editor – portable Version
+=============================
+
+STARTEN
+  Den ganzen Ordner „PDF Editor“ irgendwohin entpacken (z. B. nach „Dokumente“ oder auf den
+  Desktop) und darin „PDF Editor.exe“ doppelklicken. Eine Installation ist nicht nötig, Python
+  wird nicht gebraucht.
+
+  Wichtig: Die .exe nicht allein aus dem Ordner herauskopieren – sie braucht den Unterordner
+  „_internal“. Für den Desktop lieber eine Verknüpfung anlegen (Rechtsklick auf die .exe →
+  „Weitere Optionen anzeigen“ → „Senden an“ → „Desktop (Verknüpfung erstellen)“).
+
+  Beim ersten Start zeigt Windows evtl. „Der Computer wurde durch Windows geschützt“, weil das
+  Programm nicht digital signiert ist: auf „Weitere Informationen“ → „Trotzdem ausführen“.
+
+PDFs MIT DEM PROGRAMM ÖFFNEN
+  Eine PDF-Datei auf „PDF Editor.exe“ ziehen, oder: Rechtsklick auf eine PDF → „Öffnen mit“ →
+  „Andere App auswählen“ → „Weitere Apps“ → „Eine andere App auf diesem PC suchen“ → die .exe wählen.
+
+AKTUALISIEREN
+  Programm schließen, den alten Ordner „PDF Editor“ löschen und den aus dem neuen ZIP an dieselbe
+  Stelle entpacken. Einstellungen (Stifte, Speicherorte, zuletzt geöffnete Dateien) bleiben erhalten.
+  Die Version steht unter „Hilfe → Über PDF Editor“.
+
+DEINSTALLIEREN
+  Den Ordner „PDF Editor“ löschen. Wer auch Einstellungen und Protokolle entfernen möchte:
+    - Einstellungen: Registrierung, Schlüssel HKEY_CURRENT_USER\Software\PDFEditor
+    - Fehlerprotokolle: Ordner %LOCALAPPDATA%\PDF Editor
+      (in die Adressleiste des Explorers eingeben)
+
+FEHLER MELDEN
+  Bei einem Fehler zeigt das Programm eine Meldung. Die Details stehen in
+  %LOCALAPPDATA%\PDF Editor\fehler.log (bzw. absturz.log, haenger.log) – diese Datei bitte mitschicken.
+
+LIZENZEN UND WEITERGABE
+  Der PDF Editor ist freie Software unter der GNU Affero General Public License Version 3
+  (Datei „LICENSE“). Du darfst ihn kostenlos benutzen, kopieren, an Freunde weitergeben und
+  verändern. Bei der Weitergabe bitte immer den ganzen Ordner (bzw. das ganze ZIP) weitergeben –
+  also mit „LICENSE“, „LIZENZEN.txt“, dem Ordner „licenses“ und dem Ordner „Quellcode“.
+  Das Programm wird ohne jede Gewährleistung bereitgestellt.
+
+  Verwendete Bibliotheken: PyMuPDF/MuPDF (AGPL-3.0), Qt und PySide6 (LGPL-3.0), FFmpeg
+  (LGPL-2.1), Python (PSF-Lizenz). Einzelheiten, Pflichthinweise und wo es deren Quellcode
+  gibt: „LIZENZEN.txt“ (auch unter „Hilfe → Über PDF Editor → Lizenzen …“).

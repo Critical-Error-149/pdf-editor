@@ -1,0 +1,14 @@
+# Build-Ausgaben (build.py / PyInstaller) – werden jederzeit neu erzeugt
+build/
+dist/
+*.zip
+
+# Python-Zwischendateien
+__pycache__/
+*.py[cod]
+
+# Editoren / Betriebssystem
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
