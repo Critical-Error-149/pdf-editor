@@ -1,15 +1,21 @@
 """Baut die portable Version: dist/PDF-Editor-<Version>-portable.zip
 
 Aufruf (im Projektordner):  python build.py
+                             python build.py --release   (zusätzlich auf GitHub veröffentlichen, s. u.)
 Voraussetzung (einmalig):    python -m pip install -r requirements-dev.txt
 
 Jeder Aufruf erhöht die Versionsnummer (letzte Stelle in pdfeditor/__init__.py).
 
 Ergebnis: ein ZIP mit dem Ordner „PDF Editor“ (darin „PDF Editor.exe“). Zum Weitergeben einfach das ZIP
 verschicken – auf dem Zielrechner wird weder Python noch eine Installation benötigt.
+
+--release: Das ZIP wird als GitHub-Release „v<Version>“ im eigenen Repository veröffentlicht (dort findet es
+„Einstellungen → Nach Updates suchen“). Vorher müssen alle Änderungen committet und gepusht sein; die erhöhte
+Versionsnummer wird automatisch committet und gepusht. Braucht die angemeldete GitHub-Kommandozeile (gh).
 """
 import os
 import shutil
+import subprocess
 import sys
 import zipfile
 
@@ -226,7 +232,51 @@ def check_legal():
         raise SystemExit("Lizenzdateien fehlen (für die Weitergabe nötig): " + ", ".join(missing))
 
 
+def git(*args):
+    return subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True, encoding="utf-8",
+                          errors="replace")
+
+
+def check_release_ready():
+    """Vor dem Bauen prüfen, ob veröffentlicht werden kann – sonst wäre die Versionsnummer umsonst erhöht."""
+    from pdfeditor import updates
+    if updates.gh_path() is None:
+        raise SystemExit("--release: GitHub-Kommandozeile (gh) nicht gefunden.")
+    if git("status", "--porcelain").stdout.strip():
+        raise SystemExit("--release: Es gibt noch nicht committete Änderungen – erst committen und pushen.")
+    if git("fetch", "-q", "origin").returncode != 0:
+        raise SystemExit("--release: GitHub nicht erreichbar (git fetch fehlgeschlagen).")
+    ahead = git("rev-list", "--count", "origin/main..HEAD").stdout.strip()
+    behind = git("rev-list", "--count", "HEAD..origin/main").stdout.strip()
+    if ahead != "0" or behind != "0":
+        raise SystemExit(f"--release: Lokaler Stand und GitHub weichen ab ({ahead} nicht gepusht, "
+                         f"{behind} nicht geholt) – erst angleichen.")
+
+
+def publish(zip_path):
+    """Versionsnummer committen und pushen, dann das ZIP als Release „v<Version>“ hochladen."""
+    from pdfeditor import updates
+    tag = f"v{__version__}"
+    print(f"== GitHub-Release {tag}")
+    for args in (("commit", "-q", "-m", f"Version {__version__}", "--", "pdfeditor/__init__.py"),
+                 ("push", "-q", "origin", "main")):
+        r = git(*args)
+        if r.returncode != 0:
+            raise SystemExit(f"git {args[0]} fehlgeschlagen:\n{r.stderr}")
+    r = subprocess.run([updates.gh_path(), "release", "create", tag, zip_path, "--repo", updates.REPO,
+                        "--target", "main", "--title", f"{APP_NAME} {__version__}",
+                        "--notes", f"Portable Version {__version__}: ZIP entpacken und „PDF Editor.exe“ starten "
+                                   "(vorher den alten Ordner „PDF Editor“ ersetzen)."],
+                       cwd=ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace")
+    if r.returncode != 0:
+        raise SystemExit(f"Release fehlgeschlagen:\n{r.stderr}")
+    print(f"   veröffentlicht: {r.stdout.strip()}")
+
+
 def main():
+    release = "--release" in sys.argv[1:]
+    if release:
+        check_release_ready()
     check_legal()
     os.makedirs(BUILD, exist_ok=True)
     os.makedirs(DIST, exist_ok=True)
@@ -266,6 +316,8 @@ def main():
     size = os.path.getsize(zip_path) / 1024 / 1024
     print(f"\nFertig: {zip_path} ({size:.0f} MB)")
     print(f"Zum Testen ohne Entpacken: {os.path.join(app_dir, APP_NAME + '.exe')}")
+    if release:
+        publish(zip_path)
 
 
 if __name__ == "__main__":

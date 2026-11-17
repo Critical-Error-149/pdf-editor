@@ -23,8 +23,13 @@ Ergebnis: `dist/PDF-Editor-<Version>-portable.zip` mit dem Ordner `PDF Editor` (
 
 Neue Version weitergeben: `python build.py` ausführen und das neue ZIP verschicken. Jeder Build erhöht
 die Versionsnummer automatisch (letzte Stelle von `__version__` in `pdfeditor/__init__.py`), so hat jedes
-weitergegebene ZIP eine eigene Nummer.
-3. Empfänger ersetzen den alten Ordner durch den neuen; Einstellungen bleiben erhalten (Registrierung).
+weitergegebene ZIP eine eigene Nummer. Empfänger ersetzen den alten Ordner durch den neuen; Einstellungen
+bleiben erhalten (Registrierung).
+
+Auf GitHub veröffentlichen: `python build.py --release` baut wie oben und lädt das ZIP als Release `v<Version>`
+ins Repository (`gh` muss angemeldet sein; vorher alles committen und pushen – die neue Versionsnummer committet
+und pusht das Skript selbst). „Einstellungen → Updates → Nach Updates suchen“ vergleicht die installierte Version
+mit dem neuesten Release (über `gh`, da das Repository privat ist) und öffnet die Release-Seite zum Herunterladen.
 
 Fehler der .exe landen in `%LOCALAPPDATA%\PDF Editor\fehler.log` bzw. `absturz.log`; reagiert das Programm
 20 s lang nicht, stehen die Aufrufstapel aller Threads in `haenger.log`. Bei harten Abstürzen schreibt das Programm

@@ -1,11 +1,12 @@
 """Einstellungen (Datei → Einstellungen …): Darstellung, Bildseiten, automatisches Speichern."""
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QUrl
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFormLayout, QGroupBox,
-                               QHBoxLayout, QLabel, QPushButton, QSlider, QSpinBox, QVBoxLayout)
+                               QHBoxLayout, QLabel, QMessageBox, QPushButton, QSlider, QSpinBox, QVBoxLayout)
 
-from . import gestures, passwords, prefs, touch_scroll
+from . import __version__, gestures, passwords, prefs, touch_scroll, updates
 from .document import PAGE_TEMPLATES
 from .image_page import BORDERS, FITS
 
@@ -152,6 +153,19 @@ class SettingsDialog(QDialog):
             self._update_pw_label()
             lay.addWidget(box)
 
+        # ---- Updates (vorerst nur über das eigene, private GitHub-Repository)
+        box = QGroupBox("Updates")
+        row = QHBoxLayout(box)
+        self.update_label = QLabel(f"Installierte Version: {__version__}")
+        self.update_label.setWordWrap(True)
+        row.addWidget(self.update_label, 1)
+        self.update_btn = QPushButton("Nach Updates suchen")
+        self.update_btn.setToolTip(f"Neueste Version auf GitHub prüfen ({updates.REPO}); "
+                                   "heruntergeladen wird im Browser")
+        self.update_btn.clicked.connect(self._check_updates)
+        row.addWidget(self.update_btn)
+        lay.addWidget(box)
+
         # ---- Automatisch speichern
         box = QGroupBox("Automatisch speichern")
         f = QFormLayout(box)
@@ -178,6 +192,29 @@ class SettingsDialog(QDialog):
     def _forget_passwords(self):
         passwords.forget_all()
         self._update_pw_label()
+
+    def _check_updates(self):
+        self.update_btn.setEnabled(False)
+        self.update_label.setText(f"Installierte Version: {__version__} – suche …")
+        self._update_check = updates.UpdateCheck(__version__, self)
+        self._update_check.finished.connect(self._update_result)
+        self._update_check.start()
+
+    def _update_result(self, result, latest, info):
+        self.update_btn.setEnabled(True)
+        texts = {"newer": f"Version {latest} ist verfügbar (installiert: {__version__}).",
+                 "current": f"Du hast die neueste Version ({__version__}).",
+                 "none": "Auf GitHub ist noch keine Version veröffentlicht.",
+                 "error": f"Prüfen nicht möglich: {info}"}
+        self.update_label.setText(texts[result])
+        if result == "current":
+            return
+        url = info if result in ("newer", "none") else updates.RELEASES_URL
+        ask = {"newer": "Die Release-Seite im Browser öffnen, um sie herunterzuladen?",
+               "none": "Die Release-Seite trotzdem im Browser öffnen?",
+               "error": "Die Release-Seite im Browser öffnen und dort selbst nachsehen?"}[result]
+        if QMessageBox.question(self, "Updates", f"{texts[result]}\n\n{ask}") == QMessageBox.Yes:
+            QDesktopServices.openUrl(QUrl(url))
 
     def apply(self):
         qs = self.qs
