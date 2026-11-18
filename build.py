@@ -12,7 +12,9 @@ verschicken – auf dem Zielrechner wird weder Python noch eine Installation ben
 --release: Das ZIP wird als GitHub-Release „v<Version>“ im eigenen Repository veröffentlicht (dort findet es
 „Einstellungen → Nach Updates suchen“). Vorher müssen alle Änderungen committet und gepusht sein; die erhöhte
 Versionsnummer wird automatisch committet und gepusht. Braucht die angemeldete GitHub-Kommandozeile (gh).
+Außerdem bekommt der (geheime) Download-Gist das neue ZIP – für andere ohne Zugang zum privaten Repository.
 """
+import datetime
 import os
 import shutil
 import subprocess
@@ -273,6 +275,56 @@ def publish(zip_path):
     print(f"   veröffentlicht: {r.stdout.strip()}")
 
 
+# Geheimer Gist zum Weitergeben: nicht auffindbar, aber jeder mit dem Link kann herunterladen. Das ZIP liegt dort
+# unter festem Namen – der Download-Link bleibt bei jeder Version gleich und liefert immer die neueste.
+GIST_ID = "79b10e874ee6302909641519633e18c5"
+GIST_USER = "Critical-Error-149"
+GIST_ZIP = "PDF-Editor-portable.zip"
+GIST_PAGE = f"https://gist.github.com/{GIST_USER}/{GIST_ID}"
+GIST_DOWNLOAD = f"https://gist.githubusercontent.com/{GIST_USER}/{GIST_ID}/raw/{GIST_ZIP}"
+
+
+def update_gist(zip_path):
+    """Download-Gist auf diese Version setzen. Ein Gist ist ein Git-Repository; das ZIP (binär) geht nur per git push
+    hinein. Jeder Stand ersetzt den vorigen ganz (ohne Verlauf), sonst wüchse der Gist mit jeder Version um ~55 MB."""
+    work = os.path.join(BUILD, "gist")
+    remove_tree(work)
+    os.makedirs(work)
+    shutil.copy2(zip_path, os.path.join(work, GIST_ZIP))
+    size = os.path.getsize(zip_path) / 1024 / 1024
+    today = datetime.date.today().strftime("%d.%m.%Y")
+    with open(os.path.join(work, "PDF Editor – Download.md"), "w", encoding="utf-8") as f:
+        f.write(f"""# PDF Editor – Download
+
+**Version {__version__}** vom {today} · Windows 10/11 · {size:.0f} MB
+
+## ⬇️ [PDF Editor herunterladen]({GIST_DOWNLOAD})
+
+1. ZIP herunterladen (Link oben – er liefert immer die neueste Version)
+2. Entpacken, z. B. auf den Desktop
+3. Im Ordner „PDF Editor“ die Datei **PDF Editor.exe** starten – keine Installation, kein Python nötig
+
+Neue Version: den alten Ordner „PDF Editor“ durch den neuen ersetzen; Einstellungen bleiben erhalten.
+
+Windows warnt evtl. („Der Computer wurde durch Windows geschützt“), weil das Programm nicht signiert ist:
+„Weitere Informationen“ → „Trotzdem ausführen“.
+
+Lizenz: GNU AGPL-3.0-or-later (Quellcode und Lizenztexte liegen im ZIP).
+""")
+
+    def run(*args):
+        r = subprocess.run(["git", *args], cwd=work, capture_output=True, text=True, encoding="utf-8",
+                           errors="replace")
+        if r.returncode != 0:
+            raise SystemExit(f"Gist: git {args[0]} fehlgeschlagen:\n{r.stderr}")
+
+    run("init", "-q", "-b", "main")
+    run("add", "-A")
+    run("commit", "-q", "-m", f"PDF Editor {__version__}")
+    run("push", "-q", "--force", f"https://gist.github.com/{GIST_ID}.git", "main")
+    print(f"   Gist aktualisiert: {GIST_PAGE}")
+
+
 def main():
     release = "--release" in sys.argv[1:]
     if release:
@@ -318,6 +370,7 @@ def main():
     print(f"Zum Testen ohne Entpacken: {os.path.join(app_dir, APP_NAME + '.exe')}")
     if release:
         publish(zip_path)
+        update_gist(zip_path)
 
 
 if __name__ == "__main__":
