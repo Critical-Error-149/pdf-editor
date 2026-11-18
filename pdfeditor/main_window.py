@@ -642,7 +642,7 @@ class MainWindow(QMainWindow):
             self.tool_actions[tid] = a
 
     def _build_menus(self):
-        """Menüs für die Schaltfläche „Datei“ und „Hilfe“ im Menüband (keine klassische Menüleiste)."""
+        """Menü der Schaltfläche „Datei“ im Menüband (keine klassische Menüleiste) – darin auch Hilfe und Feedback."""
         m = QMenu("&Datei", self)
         m.addActions([self.act_new, self.act_open])
         self.recent_menu = m.addMenu("Zuletzt geöffnet")
@@ -661,14 +661,17 @@ class MainWindow(QMainWindow):
         m.addSeparator()
         m.addAction(self.act_settings)
         m.addSeparator()
-        m.addAction(self.act_quit)
-        self.file_menu = m
         h = QMenu("Hilfe", self)
+        h.setIcon(icons.icon("help"))
         h.addAction("Tastenkürzel und Bedienung", self._show_help)
-        h.addAction(icons.icon("feedback"), "Feedback senden …", self.send_feedback)
         h.addSeparator()
         h.addAction(f"Über {APP_NAME} …", self._show_about)
         self.help_menu = h
+        m.addMenu(h)
+        m.addAction(icons.icon("feedback"), "Feedback senden …", self.send_feedback)
+        m.addSeparator()
+        m.addAction(self.act_quit)
+        self.file_menu = m
         # Tastenkürzel aller Aktionen gelten auch ohne Menüleiste
         self.addActions([a for a in self.findChildren(QAction) if not a.shortcut().isEmpty()])
 
@@ -891,7 +894,7 @@ class MainWindow(QMainWindow):
         for page in (p_start, p_draw, p_pages, p_view):
             page.finish()
 
-        # rechts in der Registerzeile: Suche und Hilfe
+        # rechts in der Registerzeile: Suche und Vollbild (Hilfe und Feedback stehen im Menü „Datei“)
         self.search_edit = QLineEdit()
         self.search_edit.setPlaceholderText("Suchen (Strg+F)")
         self.search_edit.setClearButtonEnabled(True)
@@ -900,20 +903,6 @@ class MainWindow(QMainWindow):
         self.search_edit.returnPressed.connect(self._search)
         rb.add_right(self.search_edit)
         rb.add_right(RibbonButton(self.act_fullscreen))  # auf jeder Registerkarte sichtbar
-        fb_btn = QToolButton()  # gut sichtbar: Fehler melden, Wünsche äußern
-        fb_btn.setIcon(I("feedback"))
-        fb_btn.setToolTip("Feedback senden – Fehler melden oder Wünsche äußern (verschlüsselt, nur der Entwickler "
-                          "kann es lesen)")
-        fb_btn.setAutoRaise(True)
-        fb_btn.clicked.connect(self.send_feedback)
-        rb.add_right(fb_btn)
-        help_btn = QToolButton()
-        help_btn.setIcon(I("help"))
-        help_btn.setToolTip("Hilfe")
-        help_btn.setAutoRaise(True)
-        help_btn.setPopupMode(QToolButton.InstantPopup)
-        help_btn.setMenu(self.help_menu)
-        rb.add_right(help_btn)
         name = self.qs.value("start/ribbon_tab", "last")  # Einstellung: fester Start-Tab oder der zuletzt offene
         if name not in self._ribbon_names:
             name = self.qs.value("ribbon_tab_name")

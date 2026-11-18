@@ -153,8 +153,8 @@ die Grafikkarte nach einigen Sekunden erneut (höchstens zweimal, jeweils mit Pr
 - Mehrere Dokumente in Tabs; Tabs lassen sich nebeneinander und untereinander teilen (Ansicht → Tabs,
   Rechtsklick auf einen Tab, Strg+\); Strg+Tab wechselt, Strg+W schließt; Tabs per Ziehen anordnen,
   dasselbe Dokument mehrfach öffnen (Duplizieren / Erneut öffnen), Dateien per Rechtsklick umbenennen
-- Feedback senden (Sprechblase rechts in der Registerzeile, Hilfe → Feedback senden): Nachricht, freiwillig Name,
-  Systeminformationen, Fehlerprotokoll (Benutzername in Pfaden unkenntlich), Bild des Programmfensters und eigene
+- Feedback senden (Datei → Feedback senden … oder Einstellungen → Updates & Feedback): Nachricht, freiwillig Name,
+  Systeminformationen, Fehlerprotokoll (standardmäßig an, Benutzername in Pfaden unkenntlich), Bild des Programmfensters und eigene
   Bilder; „Vorschau“ zeigt genau, was gesendet wird. Alles wird mit dem öffentlichen Schlüssel des Entwicklers
   verschlüsselt (X25519 + AES-256-GCM, Bibliothek `cryptography`) und als Issue im privaten Repository
   `pdf-editor-feedback` abgelegt – kein GitHub-Konto nötig, niemand sonst kann es lesen. Das eingebaute Token darf nur
