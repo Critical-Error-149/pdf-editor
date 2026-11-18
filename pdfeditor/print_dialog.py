@@ -278,6 +278,10 @@ class PrintDialog(QDialog):
         right.addLayout(buttons)
         root.addLayout(right, 2)
         self.resize(1000, 680)
+        # „Drucken“ bleibt Standard-Knopf (sonst übernimmt ihn der zuletzt angeklickte, z. B. ◀ ▶, und „Drucken“ wirkt grau)
+        for b in self.findChildren(QPushButton):
+            b.setAutoDefault(False)
+        self.print_btn.setDefault(True)
 
         self._load_settings(names)
         self.printer_box.currentIndexChanged.connect(self._printer_changed)

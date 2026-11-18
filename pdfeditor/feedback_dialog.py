@@ -85,6 +85,11 @@ class FeedbackDialog(QDialog):
         self.send_btn.clicked.connect(self._send)
         buttons.addButton("Abbrechen", QDialogButtonBox.RejectRole).clicked.connect(self.reject)
         lay.addWidget(buttons)
+        # „Senden“ bleibt immer der (blau hervorgehobene) Standard-Knopf. Sonst übernimmt Qt den zuletzt angeklickten
+        # Knopf als Standard – nach „Vorschau“ sah „Senden“ dann grau und damit deaktiviert aus.
+        for b in self.findChildren(QPushButton):
+            b.setAutoDefault(False)
+        self.send_btn.setDefault(True)
         self._update_send()
         self._sender = None
 

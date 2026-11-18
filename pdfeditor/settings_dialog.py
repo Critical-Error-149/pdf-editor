@@ -209,6 +209,10 @@ class SettingsDialog(QDialog):
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         lay.addWidget(buttons)
+        # „OK“ bleibt Standard-Knopf (sonst übernimmt ihn z. B. „Nach Updates suchen“ nach dem Klick, „OK“ wirkt grau)
+        for b in self.findChildren(QPushButton):
+            b.setAutoDefault(False)
+        buttons.button(QDialogButtonBox.Ok).setDefault(True)
 
     def _update_pw_label(self):
         n = passwords.count()
