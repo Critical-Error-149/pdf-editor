@@ -163,14 +163,14 @@ class SettingsDialog(QDialog):
             self._update_pw_label()
             pages["Dokumente"].addWidget(box)
 
-        # ---- Updates (vorerst nur über das eigene, private GitHub-Repository)
+        # ---- Updates (über den Download-Gist: ohne Anmeldung, auch bei anderen)
         box = QGroupBox("Updates")
         row = QHBoxLayout(box)
         self.update_label = QLabel(f"Installierte Version: {__version__}")
         self.update_label.setWordWrap(True)
         row.addWidget(self.update_label, 1)
         self.update_btn = QPushButton("Nach Updates suchen")
-        self.update_btn.setToolTip(f"Neueste Version auf GitHub prüfen ({updates.REPO}); "
+        self.update_btn.setToolTip("Neueste Version auf der Download-Seite (GitHub-Gist) prüfen; "
                                    "heruntergeladen wird im Browser")
         self.update_btn.clicked.connect(self._check_updates)
         row.addWidget(self.update_btn)
@@ -216,15 +216,16 @@ class SettingsDialog(QDialog):
         self.update_btn.setEnabled(True)
         texts = {"newer": f"Version {latest} ist verfügbar (installiert: {__version__}).",
                  "current": f"Du hast die neueste Version ({__version__}).",
-                 "none": "Auf GitHub ist noch keine Version veröffentlicht.",
+                 "none": "Auf der Download-Seite ist noch keine Version eingetragen.",
                  "error": f"Prüfen nicht möglich: {info}"}
         self.update_label.setText(texts[result])
         if result == "current":
             return
-        url = info if result in ("newer", "none") else updates.RELEASES_URL
-        ask = {"newer": "Die Release-Seite im Browser öffnen, um sie herunterzuladen?",
-               "none": "Die Release-Seite trotzdem im Browser öffnen?",
-               "error": "Die Release-Seite im Browser öffnen und dort selbst nachsehen?"}[result]
+        url = info if result in ("newer", "none") else updates.GIST_PAGE
+        ask = {"newer": "Die Download-Seite im Browser öffnen? Dort das ZIP herunterladen und den alten Ordner "
+                        "„PDF Editor“ durch den neuen ersetzen (Einstellungen bleiben erhalten).",
+               "none": "Die Download-Seite trotzdem im Browser öffnen?",
+               "error": "Die Download-Seite im Browser öffnen und dort selbst nachsehen?"}[result]
         if QMessageBox.question(self, "Updates", f"{texts[result]}\n\n{ask}") == QMessageBox.Yes:
             QDesktopServices.openUrl(QUrl(url))
 

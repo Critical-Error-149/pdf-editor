@@ -15,6 +15,7 @@ Versionsnummer wird automatisch committet und gepusht. Braucht die angemeldete G
 Außerdem bekommt der (geheime) Download-Gist das neue ZIP – für andere ohne Zugang zum privaten Repository.
 """
 import datetime
+import json
 import os
 import shutil
 import subprocess
@@ -52,7 +53,9 @@ PRUNE = ["opengl32sw.dll",  # Software-OpenGL (wir zeichnen über Direct3D bzw. 
          # Qt6Network.dll und QtNetwork.pyd bleiben: Qt Multimedia (Video/Audio) und die Einzelinstanz
          # (single_instance: weitere Starts übergeben ihre Dateien per lokaler Verbindung) brauchen sie
          "Qt6VirtualKeyboard.dll", "Qt6Pdf.dll", "Qt6Svg.dll",
-         "plugins/platforminputcontexts", "plugins/networkinformation", "plugins/tls",
+         "plugins/platforminputcontexts", "plugins/networkinformation",
+         # von den TLS-Erweiterungen bleibt nur Schannel (Windows-eigene Verschlüsselung für „Nach Updates suchen“)
+         "plugins/tls/qopensslbackend.dll", "plugins/tls/qcertonlybackend.dll",
          "plugins/imageformats/qpdf.dll", "plugins/imageformats/qsvg.dll", "plugins/iconengines",
          "plugins/platforms/qdirect2d.dll", "plugins/platforms/qminimal.dll"]
 KEEP_TRANSLATIONS = ("qtbase_de", "qt_de", "qt_help_de")
@@ -277,11 +280,8 @@ def publish(zip_path):
 
 # Geheimer Gist zum Weitergeben: nicht auffindbar, aber jeder mit dem Link kann herunterladen. Das ZIP liegt dort
 # unter festem Namen – der Download-Link bleibt bei jeder Version gleich und liefert immer die neueste.
-GIST_ID = "79b10e874ee6302909641519633e18c5"
-GIST_USER = "Critical-Error-149"
-GIST_ZIP = "PDF-Editor-portable.zip"
-GIST_PAGE = f"https://gist.github.com/{GIST_USER}/{GIST_ID}"
-GIST_DOWNLOAD = f"https://gist.githubusercontent.com/{GIST_USER}/{GIST_ID}/raw/{GIST_ZIP}"
+# (Adressen stehen in pdfeditor/updates.py – „Nach Updates suchen“ liest die version.json aus dem Gist)
+from pdfeditor.updates import GIST_DOWNLOAD, GIST_ID, GIST_PAGE, GIST_ZIP  # noqa: E402
 
 
 def update_gist(zip_path):
@@ -291,6 +291,9 @@ def update_gist(zip_path):
     remove_tree(work)
     os.makedirs(work)
     shutil.copy2(zip_path, os.path.join(work, GIST_ZIP))
+    with open(os.path.join(work, "version.json"), "w", encoding="utf-8") as f:  # für „Nach Updates suchen“
+        json.dump({"version": __version__, "date": datetime.date.today().isoformat(),
+                   "download": GIST_DOWNLOAD, "page": GIST_PAGE}, f, indent=2)
     size = os.path.getsize(zip_path) / 1024 / 1024
     today = datetime.date.today().strftime("%d.%m.%Y")
     with open(os.path.join(work, "PDF Editor – Download.md"), "w", encoding="utf-8") as f:

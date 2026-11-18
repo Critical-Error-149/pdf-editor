@@ -38,8 +38,10 @@ bleiben erhalten (Registrierung).
 
 Auf GitHub veröffentlichen: `python build.py --release` baut wie oben und lädt das ZIP als Release `v<Version>`
 ins Repository (`gh` muss angemeldet sein; vorher alles committen und pushen – die neue Versionsnummer committet
-und pusht das Skript selbst). „Einstellungen → Updates → Nach Updates suchen“ vergleicht die installierte Version
-mit dem neuesten Release (über `gh`, da das Repository privat ist) und öffnet die Release-Seite zum Herunterladen.
+und pusht das Skript selbst) und aktualisiert den Download-Gist (ZIP + `version.json`). „Einstellungen → Updates →
+Nach Updates suchen“ liest `version.json` aus dem Gist – ohne Anmeldung, funktioniert also auch bei anderen – und
+öffnet bei einer neueren Version die Download-Seite. Für HTTPS behält der Build nur die Windows-eigene
+TLS-Erweiterung von Qt (Schannel); OpenSSL ist nicht enthalten.
 
 Fehler der .exe landen in `%LOCALAPPDATA%\PDF Editor\fehler.log` bzw. `absturz.log`; reagiert das Programm
 20 s lang nicht, stehen die Aufrufstapel aller Threads in `haenger.log`. Bei harten Abstürzen schreibt das Programm

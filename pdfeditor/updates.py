@@ -1,8 +1,12 @@
-"""Nach Updates suchen: neueste veröffentlichte Version (GitHub-Release) im eigenen Repository.
+"""Nach Updates suchen – über den (geheimen) Download-Gist, also ohne Anmeldung und auch bei anderen.
 
-Das Repository ist privat – ohne Anmeldung zeigt GitHub es nicht. Geprüft wird darum über die GitHub-Kommandozeile
-(gh), sofern sie installiert und angemeldet ist; heruntergeladen wird im Browser auf der Release-Seite (dort ist man
-angemeldet). Ohne gh bleibt nur „Seite öffnen“.
+build.py --release legt bei jeder Veröffentlichung das ZIP (fester Name, der Download-Link bleibt gleich) und eine
+kleine version.json in den Gist. Die Prüfung liest nur version.json (QtNetwork mit der Windows-eigenen
+Verschlüsselung „Schannel“ – OpenSSL ist in der .exe nicht enthalten) und vergleicht die Versionsnummern; heruntergeladen
+wird im Browser über die Gist-Seite mit Anleitung.
+
+Die GitHub-Releases im privaten Repository (REPO) bleiben das Archiv aller Versionen; build.py veröffentlicht dort
+mit der GitHub-Kommandozeile (gh_path).
 """
 from __future__ import annotations
 
@@ -10,14 +14,22 @@ import json
 import os
 import re
 import shutil
-import subprocess
-import threading
+import time
 
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QObject, QUrl, Signal
+from PySide6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
 
 REPO = "Critical-Error-149/pdf-editor"
 RELEASES_URL = f"https://github.com/{REPO}/releases"
-TIMEOUT_S = 20
+
+GIST_USER = "Critical-Error-149"
+GIST_ID = "79b10e874ee6302909641519633e18c5"
+GIST_ZIP = "PDF-Editor-portable.zip"
+GIST_PAGE = f"https://gist.github.com/{GIST_USER}/{GIST_ID}"
+GIST_RAW = f"https://gist.githubusercontent.com/{GIST_USER}/{GIST_ID}/raw"
+GIST_DOWNLOAD = f"{GIST_RAW}/{GIST_ZIP}"
+VERSION_URL = f"{GIST_RAW}/version.json"
+TIMEOUT_MS = 15000
 
 
 def parse_version(text):
@@ -26,6 +38,7 @@ def parse_version(text):
 
 
 def gh_path():
+    """GitHub-Kommandozeile (nur build.py --release braucht sie)."""
     found = shutil.which("gh")
     if found:
         return found
@@ -37,58 +50,47 @@ def gh_path():
     return None
 
 
-def _run_gh(gh):
-    """(Rückgabecode, Ausgabe, Fehlertext) von „gh release view“ – ohne Konsolenfenster."""
-    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-    p = subprocess.run([gh, "release", "view", "--repo", REPO, "--json", "tagName,url,name"],
-                       capture_output=True, text=True, encoding="utf-8", errors="replace",
-                       timeout=TIMEOUT_S, creationflags=flags)
-    return p.returncode, p.stdout, p.stderr
-
-
 class UpdateCheck(QObject):
-    """Prüft im Hintergrund. finished(Ergebnis, neueste Version, Adresse oder Fehlertext);
-    Ergebnis: "newer", "current", "none" (noch nichts veröffentlicht) oder "error"."""
+    """Prüft asynchron. finished(Ergebnis, neueste Version, Adresse der Download-Seite oder Fehlertext);
+    Ergebnis: "newer", "current", "none" (noch keine Versionsinfo im Gist) oder "error"."""
     finished = Signal(str, str, str)
 
     def __init__(self, current_version, parent=None):
         super().__init__(parent)
         self.current = current_version
+        self._net = QNetworkAccessManager(self)
+        self._reply = None
 
     def start(self):
-        threading.Thread(target=self._work, daemon=True).start()
+        # Zeitstempel in der Adresse: GitHub liefert Gist-Dateien sonst evtl. noch minutenlang aus dem Zwischenspeicher
+        req = QNetworkRequest(QUrl(f"{VERSION_URL}?t={int(time.time())}"))
+        req.setTransferTimeout(TIMEOUT_MS)
+        req.setHeader(QNetworkRequest.UserAgentHeader, f"PDF-Editor/{self.current}")
+        self._reply = self._net.get(req)
+        self._reply.finished.connect(self._done)
 
-    def _work(self):
-        result = self._check()
+    def _done(self):
+        reply, self._reply = self._reply, None
+        reply.deleteLater()
+        status = reply.attribute(QNetworkRequest.HttpStatusCodeAttribute)
+        if reply.error() != QNetworkReply.NoError:
+            if status == 404:
+                self.finished.emit("none", "", GIST_PAGE)
+            elif reply.error() == QNetworkReply.OperationCanceledError:
+                self.finished.emit("error", "", "GitHub hat nicht rechtzeitig geantwortet.")
+            elif reply.error() in (QNetworkReply.HostNotFoundError, QNetworkReply.TimeoutError,
+                                   QNetworkReply.TemporaryNetworkFailureError,
+                                   QNetworkReply.NetworkSessionFailedError):
+                self.finished.emit("error", "", "Keine Verbindung zu GitHub (Internet?).")
+            else:
+                self.finished.emit("error", "", reply.errorString())
+            return
         try:
-            self.finished.emit(*result)  # wird im Hauptthread zugestellt (Objekt lebt dort)
-        except RuntimeError:
-            pass  # Dialog inzwischen geschlossen
-
-    def _check(self):
-        gh = gh_path()
-        if gh is None:
-            return "error", "", "Die GitHub-Kommandozeile (gh) ist auf diesem PC nicht installiert."
-        try:
-            code, out, err = _run_gh(gh)
-        except subprocess.TimeoutExpired:
-            return "error", "", "GitHub hat nicht rechtzeitig geantwortet (keine Internetverbindung?)."
-        except OSError as e:
-            return "error", "", f"gh konnte nicht gestartet werden: {e}"
-        low = err.lower()
-        if code != 0:
-            if "release not found" in low:
-                return "none", "", RELEASES_URL
-            if "auth login" in low or "not logged" in low or "authentication" in low:
-                return "error", "", "gh ist nicht bei GitHub angemeldet (im Terminal: gh auth login)."
-            if "could not resolve" in low or "connect" in low or "timeout" in low:
-                return "error", "", "Keine Verbindung zu GitHub."
-            return "error", "", (err.strip().splitlines() or ["Unbekannter Fehler"])[0]
-        try:
-            data = json.loads(out)
-        except ValueError:
-            return "error", "", "Unerwartete Antwort von GitHub."
-        tag = data.get("tagName", "")
-        url = data.get("url") or RELEASES_URL
-        newer = parse_version(tag) > parse_version(self.current)
-        return ("newer" if newer else "current"), tag.lstrip("vV"), url
+            data = json.loads(bytes(reply.readAll()).decode("utf-8"))
+            latest = str(data["version"])
+        except (ValueError, KeyError, TypeError):
+            self.finished.emit("error", "", "Unerwartete Antwort vom Download-Gist.")
+            return
+        page = data.get("page") or GIST_PAGE
+        newer = parse_version(latest) > parse_version(self.current)
+        self.finished.emit("newer" if newer else "current", latest, page)
