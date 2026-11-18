@@ -1,0 +1,2 @@
+# Batch-Dateien immer mit Windows-Zeilenenden (cmd liest LF-Dateien stellenweise falsch)
+*.bat text eol=crlf

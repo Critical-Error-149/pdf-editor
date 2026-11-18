@@ -6,10 +6,12 @@ Aufruf (im Projektordner):  python tools/feedback_lesen.py            (neue Nach
 Voraussetzungen: angemeldete GitHub-Kommandozeile (gh) und der private Schlüssel
 (%USERPROFILE%\\PDF Editor Schlüssel\\privater_schluessel.pem, s. tools/feedback_schluessel.py).
 
-Ergebnis: Dokumente\\PDF Editor Feedback\\<Datum> #<Nr>\\ mit nachricht.txt, system.txt, fehlerprotokoll.txt und den
-Bildern. Gelesene Issues werden auf GitHub geschlossen (Inhalt bleibt dort verschlüsselt erhalten).
+Ergebnis: Dokumente\\PDF Editor Feedback\\<Datum> #<Nr>\\ mit feedback.pdf (alles zusammen: Nachricht, Systemdaten,
+Bilder, Fehlerprotokoll), nachricht.txt, system.txt, fehlerprotokoll.txt und den Bildern. Gelesene Issues werden auf
+GitHub geschlossen (Inhalt bleibt dort verschlüsselt erhalten). Bequemer: „Feedback lesen.bat“ im Projektordner.
 """
 import base64
+import html
 import json
 import os
 import subprocess
@@ -67,12 +69,58 @@ def save(issue, payload):
     if payload.get("log"):
         with open(os.path.join(folder, "fehlerprotokoll.txt"), "w", encoding="utf-8") as f:
             f.write(payload["log"])
+    images = []
     for n, img in enumerate(payload.get("images") or [], 1):
         name = os.path.basename(img.get("name") or f"bild{n}.jpg")
         stem, ext = os.path.splitext(name)
-        with open(os.path.join(folder, f"{n}_{stem}{ext or '.jpg'}"), "wb") as f:
+        fname = f"{n}_{stem}{ext or '.jpg'}"
+        with open(os.path.join(folder, fname), "wb") as f:
             f.write(base64.b64decode(img["data"]))
+        images.append((fname, img.get("size") or [0, 0]))
+    make_pdf(folder, issue, payload, images)
     return folder
+
+
+def make_pdf(folder, issue, payload, images):
+    """Alles zu einer Nachricht in einer PDF (A4): Kopf, Nachricht, Systemdaten, Bilder, Fehlerprotokoll."""
+    import pymupdf as fitz
+    esc = html.escape
+    page = fitz.paper_rect("a4")
+    area = page + (48, 48, -48, -48)
+
+    def rows(pairs):
+        return "".join(f"<tr><td class='k'>{esc(str(k))}</td><td>{esc(str(v))}</td></tr>" for k, v in pairs)
+
+    parts = [f"<h1>Feedback #{issue['number']}</h1>",
+             "<table>" + rows([("Von", payload.get("name") or "(ohne Namen)"), ("Gesendet", payload.get("sent")),
+                               ("Programmversion", payload.get("version"))]) + "</table>",
+             "<h2>Nachricht</h2>",
+             "<p>" + esc(payload.get("message", "")).replace("\n", "<br/>") + "</p>"]
+    if payload.get("system"):
+        parts += ["<h2>Systeminformationen</h2>", "<table>" + rows(
+            (k, ", ".join(v) if isinstance(v, list) else v) for k, v in payload["system"].items()) + "</table>"]
+    for fname, (w, h) in images:
+        # Bild auf die Seite einpassen (ein zu hohes Bild würde sonst nirgends hinpassen)
+        scale = min(area.width / w, (area.height - 60) / h, 1.0) if w and h else 1.0
+        parts += [f"<h2>Bild: {esc(fname)}</h2>",
+                  f"<p><img src='{esc(fname)}' width='{w * scale:.0f}' height='{h * scale:.0f}'/></p>"]
+    if payload.get("log"):
+        parts += ["<h2>Fehlerprotokoll</h2>", f"<div class='log'>{esc(payload['log'])}</div>"]
+    css = ("body {font-family: sans-serif; font-size: 10pt;} h1 {font-size: 18pt; margin-bottom: 6pt;} "
+           "h2 {font-size: 12pt; margin-top: 14pt; color: #335;} td {padding: 1pt 8pt 1pt 0; vertical-align: top;} "
+           "td.k {font-weight: bold; white-space: nowrap;} "
+           ".log {font-family: monospace; font-size: 7pt; white-space: pre-wrap;}")
+    story = fitz.Story(html="".join(parts), user_css=css, archive=folder)
+    path = os.path.join(folder, "feedback.pdf")
+    writer = fitz.DocumentWriter(path)
+    more = True
+    while more:
+        dev = writer.begin_page(page)
+        more, _ = story.place(area)
+        story.draw(dev)
+        writer.end_page()
+    writer.close()
+    return path
 
 
 def main():

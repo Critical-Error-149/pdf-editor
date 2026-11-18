@@ -159,9 +159,10 @@ die Grafikkarte nach einigen Sekunden erneut (höchstens zweimal, jeweils mit Pr
   verschlüsselt (X25519 + AES-256-GCM, Bibliothek `cryptography`) und als Issue im privaten Repository
   `pdf-editor-feedback` abgelegt – kein GitHub-Konto nötig, niemand sonst kann es lesen. Das eingebaute Token darf nur
   Issues in diesem Repository anlegen; es steht nicht im Git-Repository (build.py setzt es beim Bauen aus
-  `%LOCALAPPDATA%\PDF Editor\feedback\token.txt` ein). Lesen: `python tools/feedback_lesen.py` (entschlüsselt mit
-  `%USERPROFILE%\PDF Editor Schlüssel\privater_schluessel.pem`, legt alles unter Dokumente\PDF Editor Feedback ab);
-  Schlüsselpaar anlegen: `python tools/feedback_schluessel.py`
+  `%LOCALAPPDATA%\PDF Editor\feedback\token.txt` ein). Lesen: Doppelklick auf `Feedback lesen.bat` bzw.
+  `python tools/feedback_lesen.py` (entschlüsselt mit `%USERPROFILE%\PDF Editor Schlüssel\privater_schluessel.pem`,
+  legt jede Nachricht unter Dokumente\PDF Editor Feedback ab – mit `feedback.pdf`, die Nachricht, Systemdaten, Bilder
+  und Fehlerprotokoll zusammenfasst); Schlüsselpaar anlegen: `python tools/feedback_schluessel.py`
 - Nur ein laufendes Programm: Wird eine PDF im Explorer geöffnet, während der Editor schon läuft, öffnet sie dort
   als Tab und das Fenster kommt nach vorn (auch mehrere gleichzeitig markierte Dateien); der zusätzliche Start
   beendet sich nach etwa 1 s, ohne Hauptfenster und PyMuPDF zu laden. Übergabe per lokaler Verbindung, die nur das
