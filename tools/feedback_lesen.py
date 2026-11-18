@@ -4,7 +4,7 @@ entschlüsselt sie mit dem privaten Schlüssel und legt jede Nachricht als Ordne
 Aufruf (im Projektordner):  python tools/feedback_lesen.py            (neue Nachrichten)
                             python tools/feedback_lesen.py --alle     (auch schon gelesene)
 Voraussetzungen: angemeldete GitHub-Kommandozeile (gh) und der private Schlüssel
-(%LOCALAPPDATA%\\PDF Editor\\feedback\\privater_schluessel.pem, s. tools/feedback_schluessel.py).
+(%USERPROFILE%\\PDF Editor Schlüssel\\privater_schluessel.pem, s. tools/feedback_schluessel.py).
 
 Ergebnis: Dokumente\\PDF Editor Feedback\\<Datum> #<Nr>\\ mit nachricht.txt, system.txt, fehlerprotokoll.txt und den
 Bildern. Gelesene Issues werden auf GitHub geschlossen (Inhalt bleibt dort verschlüsselt erhalten).
@@ -22,7 +22,7 @@ from cryptography.hazmat.primitives.serialization import load_pem_private_key  #
 
 from pdfeditor import feedback, updates  # noqa: E402
 
-KEY_FILE = os.path.join(feedback._data_dir(), "privater_schluessel.pem")
+KEY_FILE = feedback.KEY_FILE
 OUT = os.path.join(os.path.expanduser("~"), "Documents", "PDF Editor Feedback")
 
 

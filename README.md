@@ -160,7 +160,7 @@ die Grafikkarte nach einigen Sekunden erneut (höchstens zweimal, jeweils mit Pr
   `pdf-editor-feedback` abgelegt – kein GitHub-Konto nötig, niemand sonst kann es lesen. Das eingebaute Token darf nur
   Issues in diesem Repository anlegen; es steht nicht im Git-Repository (build.py setzt es beim Bauen aus
   `%LOCALAPPDATA%\PDF Editor\feedback\token.txt` ein). Lesen: `python tools/feedback_lesen.py` (entschlüsselt mit
-  `%LOCALAPPDATA%\PDF Editor\feedback\privater_schluessel.pem`, legt alles unter Dokumente\PDF Editor Feedback ab);
+  `%USERPROFILE%\PDF Editor Schlüssel\privater_schluessel.pem`, legt alles unter Dokumente\PDF Editor Feedback ab);
   Schlüsselpaar anlegen: `python tools/feedback_schluessel.py`
 - Nur ein laufendes Programm: Wird eine PDF im Explorer geöffnet, während der Editor schon läuft, öffnet sie dort
   als Tab und das Fenster kommt nach vorn (auch mehrere gleichzeitig markierte Dateien); der zusätzliche Start

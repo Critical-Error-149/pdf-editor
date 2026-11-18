@@ -2,7 +2,7 @@
 
 Aufruf (im Projektordner):  python tools/feedback_schluessel.py
 
-- Der PRIVATE Schlüssel kommt nach %LOCALAPPDATA%\\PDF Editor\\feedback\\privater_schluessel.pem – nie ins Repository,
+- Der PRIVATE Schlüssel kommt nach %USERPROFILE%\\PDF Editor Schlüssel\\privater_schluessel.pem – nie ins Repository,
   nie weitergeben. Unbedingt sichern (z. B. USB-Stick, Passwort-Manager): Ohne ihn lässt sich Feedback nicht mehr
   lesen. Auf einem weiteren PC zum Lesen einfach dorthin kopieren.
 - Der ÖFFENTLICHE Schlüssel wird in pdfeditor/feedback.py eingetragen (PUBLIC_KEY_B64) – den darf jeder kennen.
@@ -21,9 +21,8 @@ from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey  #
 from cryptography.hazmat.primitives.serialization import (Encoding, NoEncryption, PrivateFormat,  # noqa: E402
                                                           PublicFormat, load_pem_private_key)
 
-from pdfeditor.feedback import _data_dir  # noqa: E402
+from pdfeditor.feedback import KEY_FILE  # noqa: E402
 
-KEY_FILE = os.path.join(_data_dir(), "privater_schluessel.pem")
 FEEDBACK_PY = os.path.join(ROOT, "pdfeditor", "feedback.py")
 
 

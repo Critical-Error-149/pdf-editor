@@ -41,6 +41,10 @@ def _data_dir():
 
 
 TOKEN_FILE = os.path.join(_data_dir(), "token.txt")
+# Privater Schlüssel (nur Entwickler-PC) bewusst NICHT unter AppData: Store-Apps wie die Claude-App leiten Schreibzugriffe
+# auf AppData in einen eigenen, versteckten Bereich um – dort fände man ihn weder zum Sichern noch beim Lesen
+KEY_DIR = os.path.join(os.path.expanduser("~"), "PDF Editor Schlüssel")
+KEY_FILE = os.path.join(KEY_DIR, "privater_schluessel.pem")
 
 
 def token():
