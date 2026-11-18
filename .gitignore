@@ -12,3 +12,6 @@ __pycache__/
 .idea/
 Thumbs.db
 desktop.ini
+
+# Feedback-Token (build.py erzeugt die Datei nur während des Bauens)
+pdfeditor/_secrets.py

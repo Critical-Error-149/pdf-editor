@@ -37,7 +37,10 @@ SOURCE_DIRS = ["pdfeditor", "tools", "licenses"]
 LEGAL_FILES = ["LICENSE", "LIZENZEN.txt"]
 LEGAL_DIR = "licenses"
 REQUIRED_LICENSES = ["AGPL-3.0.txt", "GPL-3.0.txt", "LGPL-3.0.txt", "LGPL-2.1.txt", "Python-PSF-LICENSE.txt",
-                     "PyInstaller-COPYING.txt"]
+                     "PyInstaller-COPYING.txt", "Apache-2.0.txt", "cryptography-BSD.txt", "cffi-MIT.txt",
+                     "pycparser-BSD.txt"]
+# Token fürs Feedback (feedback.py): nur beim Bauen eingesetzt, nie im Git-Repository oder im Quellcode-Ordner
+SECRETS = os.path.join(ROOT, "pdfeditor", "_secrets.py")
 
 
 # Python-Pakete, die PyInstaller über optionale Importe (z. B. von PyMuPDF) einsammeln würde
@@ -220,12 +223,38 @@ def copy_source(dest):
             shutil.copy2(src, dest)
     for d in SOURCE_DIRS:
         shutil.copytree(os.path.join(ROOT, d), os.path.join(dest, d),
-                        ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+                        ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "_secrets.py"))
     import stat
     for base, dirs, _files in os.walk(dest):  # Schreibschutz der Quellordner nicht mitnehmen (blockiert sonst
         for name in dirs:                       # das Löschen beim nächsten Build)
             p = os.path.join(base, name)
             os.chmod(p, os.stat(p).st_mode | stat.S_IWRITE)
+
+
+def write_secrets():
+    """Feedback-Token aus der lokalen Datei (feedback.TOKEN_FILE) für die .exe einsetzen. Leicht verschleiert – kein
+    Schutz (das Token darf ohnehin nur verschlüsselte Issues anlegen), aber GitHubs Token-Scanner sperrt es sonst
+    automatisch, sobald das ZIP irgendwo öffentlich liegt. Ohne Datei: Feedback in dieser .exe abgeschaltet."""
+    import base64
+    from pdfeditor import feedback
+    try:
+        with open(feedback.TOKEN_FILE, encoding="utf-8") as f:
+            tok = f.read().strip()
+    except OSError:
+        tok = ""
+    if not tok:
+        print(f"   Hinweis: kein Feedback-Token ({feedback.TOKEN_FILE}) – „Feedback senden“ ist abgeschaltet.")
+        return
+    hidden = base64.b64encode(tok.encode()[::-1]).decode()
+    with open(SECRETS, "w", encoding="utf-8") as f:
+        f.write('"""Von build.py beim Bauen erzeugt und danach gelöscht – nicht ins Repository."""\n'
+                "import base64\n\n\ndef feedback_token():\n"
+                f"    return base64.b64decode({hidden!r}).decode()[::-1]\n")
+
+
+def remove_secrets():
+    if os.path.exists(SECRETS):
+        os.remove(SECRETS)
 
 
 def check_legal():
@@ -345,7 +374,11 @@ def main():
         make_version_file(version_file)
         print("== PyInstaller")
         remove_tree(os.path.join(BUILD, "dist", APP_NAME))  # alter Build (auch schreibgeschützte Ordner)
-        run_pyinstaller(icon, version_file)
+        write_secrets()
+        try:
+            run_pyinstaller(icon, version_file)
+        finally:
+            remove_secrets()
         app_dir = os.path.join(BUILD, "dist", APP_NAME)
         print("== Aufräumen und Selbsttest")
         prune(app_dir)

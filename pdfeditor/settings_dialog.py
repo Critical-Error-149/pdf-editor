@@ -1,11 +1,13 @@
 """Einstellungen (Datei → Einstellungen …): Darstellung, Bildseiten, automatisches Speichern."""
 from __future__ import annotations
 
+import time
+
 from PySide6.QtCore import Qt, QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFormLayout, QGroupBox,
                                QHBoxLayout, QLabel, QMessageBox, QPushButton, QSlider, QSpinBox, QTabWidget,
-                               QVBoxLayout, QWidget)
+                               QVBoxLayout, QWidget, QApplication)
 
 from . import __version__, gestures, passwords, prefs, touch_scroll, updates
 from .document import PAGE_TEMPLATES
@@ -41,7 +43,7 @@ class SettingsDialog(QDialog):
         # (Surface: 1032 px Dialog bei 912 px Platz über der Taskleiste)
         self.tabs = QTabWidget()
         pages = {}
-        for name in ("Darstellung", "Bedienung", "Dokumente", "Updates"):
+        for name in ("Darstellung", "Bedienung", "Dokumente", "Updates & Feedback"):
             page = QWidget()
             pages[name] = QVBoxLayout(page)
             self.tabs.addTab(page, name)
@@ -174,7 +176,19 @@ class SettingsDialog(QDialog):
                                    "heruntergeladen wird im Browser")
         self.update_btn.clicked.connect(self._check_updates)
         row.addWidget(self.update_btn)
-        pages["Updates"].addWidget(box)
+        pages["Updates & Feedback"].addWidget(box)
+
+        # ---- Feedback (verschlüsselt an den Entwickler, siehe feedback.py)
+        box = QGroupBox("Feedback")
+        row = QHBoxLayout(box)
+        label = QLabel("Fehler melden oder Wünsche äußern – verschlüsselt, nur der Entwickler kann es lesen.")
+        label.setWordWrap(True)
+        row.addWidget(label, 1)
+        self.feedback_btn = QPushButton("Feedback senden …")
+        self.feedback_btn.clicked.connect(self._feedback)
+        self.feedback_btn.setEnabled(hasattr(parent, "send_feedback"))
+        row.addWidget(self.feedback_btn)
+        pages["Updates & Feedback"].addWidget(box)
 
         # ---- Automatisch speichern
         box = QGroupBox("Automatisch speichern")
@@ -204,6 +218,17 @@ class SettingsDialog(QDialog):
     def _forget_passwords(self):
         passwords.forget_all()
         self._update_pw_label()
+
+    def _feedback(self):
+        # Einstellungen kurz ausblenden: das Fensterbild für das Feedback soll das Programm zeigen, nicht diesen Dialog
+        self.hide()
+        end = time.monotonic() + 0.25
+        while time.monotonic() < end:
+            QApplication.processEvents()
+        try:
+            self.parent().send_feedback()
+        finally:
+            self.show()
 
     def _check_updates(self):
         self.update_btn.setEnabled(False)

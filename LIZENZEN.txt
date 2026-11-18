@@ -33,6 +33,11 @@ PySide6 / Shiboken6        6.11.2    GNU LGPL-3.0 (The Qt Company Ltd.)       LG
 FFmpeg (in Qt Multimedia)  7.1.5     GNU LGPL-2.1-or-later (FFmpeg-Entwickler) LGPL-2.1.txt
 Python                     3.14.0    PSF License (Python Software Foundation)  Python-PSF-LICENSE.txt
 PyInstaller (Startprogramm) 6.22.3   GPL-2.0-or-later mit Bootloader-Ausnahme   PyInstaller-COPYING.txt
+cryptography (Feedback)    50.0.2    Apache-2.0 oder BSD-3-Clause (Python Cryptographic Authority)
+                                                                              Apache-2.0.txt, cryptography-BSD.txt
+  darin OpenSSL            3.x       Apache-2.0 (The OpenSSL Project)          Apache-2.0.txt
+cffi                       2.0.0     MIT (Armin Rigo, Maciej Fijalkowski)      cffi-MIT.txt
+pycparser                  2.23      BSD-3-Clause (Eli Bendersky)              pycparser-BSD.txt
 Microsoft Visual C++ Laufzeit / Universal C Runtime (VCRUNTIME140*.dll, ucrtbase.dll,
   api-ms-win-*.dll): von Microsoft zur Weitergabe mit Programmen freigegeben.
 

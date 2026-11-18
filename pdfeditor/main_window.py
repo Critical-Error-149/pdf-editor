@@ -665,6 +665,7 @@ class MainWindow(QMainWindow):
         self.file_menu = m
         h = QMenu("Hilfe", self)
         h.addAction("Tastenkürzel und Bedienung", self._show_help)
+        h.addAction(icons.icon("feedback"), "Feedback senden …", self.send_feedback)
         h.addSeparator()
         h.addAction(f"Über {APP_NAME} …", self._show_about)
         self.help_menu = h
@@ -899,6 +900,13 @@ class MainWindow(QMainWindow):
         self.search_edit.returnPressed.connect(self._search)
         rb.add_right(self.search_edit)
         rb.add_right(RibbonButton(self.act_fullscreen))  # auf jeder Registerkarte sichtbar
+        fb_btn = QToolButton()  # gut sichtbar: Fehler melden, Wünsche äußern
+        fb_btn.setIcon(I("feedback"))
+        fb_btn.setToolTip("Feedback senden – Fehler melden oder Wünsche äußern (verschlüsselt, nur der Entwickler "
+                          "kann es lesen)")
+        fb_btn.setAutoRaise(True)
+        fb_btn.clicked.connect(self.send_feedback)
+        rb.add_right(fb_btn)
         help_btn = QToolButton()
         help_btn.setIcon(I("help"))
         help_btn.setToolTip("Hilfe")
@@ -2089,6 +2097,12 @@ class MainWindow(QMainWindow):
             QDesktopServices.openUrl(QUrl.fromLocalFile(path))
         else:
             QMessageBox.information(self, APP_NAME, "LIZENZEN.txt wurde nicht gefunden.")
+
+    def send_feedback(self):
+        from .feedback import window_screenshot
+        from .feedback_dialog import FeedbackDialog
+        shot = window_screenshot(self)  # vor dem Dialog aufnehmen: zeigt das Programm, nicht den Dialog
+        FeedbackDialog(self, shot).exec()
 
     def _show_help(self):
         lines = ["<b>Werkzeuge</b><br>"]

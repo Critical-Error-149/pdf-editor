@@ -153,6 +153,15 @@ die Grafikkarte nach einigen Sekunden erneut (höchstens zweimal, jeweils mit Pr
 - Mehrere Dokumente in Tabs; Tabs lassen sich nebeneinander und untereinander teilen (Ansicht → Tabs,
   Rechtsklick auf einen Tab, Strg+\); Strg+Tab wechselt, Strg+W schließt; Tabs per Ziehen anordnen,
   dasselbe Dokument mehrfach öffnen (Duplizieren / Erneut öffnen), Dateien per Rechtsklick umbenennen
+- Feedback senden (Sprechblase rechts in der Registerzeile, Hilfe → Feedback senden): Nachricht, freiwillig Name,
+  Systeminformationen, Fehlerprotokoll (Benutzername in Pfaden unkenntlich), Bild des Programmfensters und eigene
+  Bilder; „Vorschau“ zeigt genau, was gesendet wird. Alles wird mit dem öffentlichen Schlüssel des Entwicklers
+  verschlüsselt (X25519 + AES-256-GCM, Bibliothek `cryptography`) und als Issue im privaten Repository
+  `pdf-editor-feedback` abgelegt – kein GitHub-Konto nötig, niemand sonst kann es lesen. Das eingebaute Token darf nur
+  Issues in diesem Repository anlegen; es steht nicht im Git-Repository (build.py setzt es beim Bauen aus
+  `%LOCALAPPDATA%\PDF Editor\feedback\token.txt` ein). Lesen: `python tools/feedback_lesen.py` (entschlüsselt mit
+  `%LOCALAPPDATA%\PDF Editor\feedback\privater_schluessel.pem`, legt alles unter Dokumente\PDF Editor Feedback ab);
+  Schlüsselpaar anlegen: `python tools/feedback_schluessel.py`
 - Nur ein laufendes Programm: Wird eine PDF im Explorer geöffnet, während der Editor schon läuft, öffnet sie dort
   als Tab und das Fenster kommt nach vorn (auch mehrere gleichzeitig markierte Dateien); der zusätzliche Start
   beendet sich nach etwa 1 s, ohne Hauptfenster und PyMuPDF zu laden. Übergabe per lokaler Verbindung, die nur das
