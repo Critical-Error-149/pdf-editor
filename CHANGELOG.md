@@ -4,6 +4,8 @@ Neue Einträge kommen unter „Neu“ (eine Zeile je Änderung, beginnend mit �
 daraus den Abschnitt der neuen Version; das Programm zeigt ihn bei „Nach Updates suchen“ an.
 
 ## Neu
+
+## 0.2.8 – 19.11.2026
 - Automatische Suche nach Updates beim Programmstart (abschaltbar unter Einstellungen → Updates & Feedback); bei einer neuen Version werden die Änderungen angezeigt
 - „Jetzt aktualisieren“: Das Programm lädt die neue Version selbst herunter, ersetzt sich nach dem Schließen und startet neu
 - Download ohne Quellcode: Programm und Quellcode sind jetzt zwei getrennte ZIP-Dateien (der Quellcode bleibt frei erhältlich)
