@@ -19,6 +19,8 @@ from PySide6.QtNetwork import QLocalServer, QLocalSocket
 
 MAX_MESSAGE = 1_000_000  # Bytes – mehr ist keine Dateiliste
 _mutex = None            # bleibt bis Programmende geöffnet (Windows gibt es danach selbst frei)
+_running = None
+RUNNING_MUTEX = "PDFEditorLaeuft"
 
 
 def _name():
@@ -37,7 +39,11 @@ def is_primary():
     k32.CreateMutexW.restype = ctypes.c_void_p
     k32.CreateMutexW.argtypes = [ctypes.c_void_p, ctypes.c_bool, ctypes.c_wchar_p]
     _mutex = k32.CreateMutexW(None, False, "Local\\" + _name())
-    return not (_mutex and ctypes.get_last_error() == 183)  # ERROR_ALREADY_EXISTS
+    primary = not (_mutex and ctypes.get_last_error() == 183)  # ERROR_ALREADY_EXISTS
+    # fester Name für das Deinstallationsprogramm (installer/PDF Editor.iss): erkennt so ein laufendes Programm
+    global _running
+    _running = k32.CreateMutexW(None, False, RUNNING_MUTEX)
+    return primary
 
 
 def send_to_running(paths, timeout=8.0):

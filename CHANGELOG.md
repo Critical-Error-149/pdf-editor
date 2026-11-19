@@ -15,6 +15,10 @@ daraus den Abschnitt der neuen Version; das Programm zeigt ihn bei „Nach Updat
 - Hilfe und Feedback stehen im Menü „Datei“
 - Farbige Symbole (📌 Speicherorte, 📁 Dateien) sind zurück
 - „Senden“, „Drucken“ und „OK“ wirkten nach dem Klick auf einen anderen Knopf fälschlich ausgegraut
+- Programm blieb nach „Feedback senden“ aus den Einstellungen gesperrt
+- Neu: Installationsprogramm (ohne Administratorrechte) mit Startmenü-Eintrag, optionalem Desktop-Symbol und „Öffnen mit“ für PDFs; die portable ZIP-Version gibt es weiterhin
+- Die installierte Version aktualisiert sich über „Jetzt aktualisieren“ ebenfalls selbst
+- Deinstallieren auf Wunsch restlos – inklusive Einstellungen, gespeicherter Passwörter und Protokolle (PDF-Dateien bleiben immer erhalten)
 
 ## 0.2.7 – 18.11.2026
 - „Nach Updates suchen“ funktioniert ohne Anmeldung über die Download-Seite (auch bei anderen)

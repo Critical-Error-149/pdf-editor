@@ -30,6 +30,8 @@ GIST_RAW = f"https://gist.githubusercontent.com/{GIST_USER}/{GIST_ID}/raw"
 GIST_DOWNLOAD = f"{GIST_RAW}/{GIST_ZIP}"
 GIST_SOURCE_ZIP = "PDF-Editor-Quellcode.zip"  # Quellcode getrennt (AGPL 6 d: am selben Ort wie das Programm)
 GIST_SOURCE = f"{GIST_RAW}/{GIST_SOURCE_ZIP}"
+GIST_SETUP_EXE = "PDF-Editor-Setup.exe"  # Installationsprogramm (Inno Setup) – fester Name, immer die neueste Version
+GIST_SETUP = f"{GIST_RAW}/{GIST_SETUP_EXE}"
 VERSION_URL = f"{GIST_RAW}/version.json"
 TIMEOUT_MS = 15000
 

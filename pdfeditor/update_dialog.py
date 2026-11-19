@@ -4,6 +4,7 @@ suchen“ in den Einstellungen."""
 from __future__ import annotations
 
 import html
+import zipfile
 
 from PySide6.QtCore import QUrl
 from PySide6.QtGui import QDesktopServices
@@ -47,8 +48,10 @@ class UpdateDialog(QDialog):
         for b in self.findChildren(QPushButton):
             b.setAutoDefault(False)
         self.update_btn.setDefault(True)
-        ok, reason = self_update.can_self_update()
-        if ok and not data.get("sha256"):
+        # installierte Version: Setup laden und still ausführen, portable Version: ZIP entpacken und Dateien ersetzen
+        self.kind, self.url, self.sha256, self.size = self_update.update_source(data)
+        ok, reason = self_update.can_self_update(self.kind)
+        if ok and not self.sha256:
             ok, reason = False, "Für diese Version fehlt die Prüfsumme – bitte selbst herunterladen."
         self.update_btn.setEnabled(ok)
         if not ok:
@@ -70,8 +73,8 @@ class UpdateDialog(QDialog):
         self.progress.setVisible(True)
         self.progress.setRange(0, 0)
         self.status.setText("Lade die neue Version …")
-        self._dl = self_update.Downloader(self.data.get("download") or updates.GIST_DOWNLOAD,
-                                          self.data.get("sha256"), self.data.get("size"), self)
+        name = self_update.SETUP_FILE if self.kind == "setup" else "update.zip"
+        self._dl = self_update.Downloader(self.url, self.sha256, self.size, self, filename=name)
         self._dl.progress.connect(self._on_progress)
         self._dl.finished.connect(self._on_downloaded)
         self._dl.start()
@@ -96,8 +99,8 @@ class UpdateDialog(QDialog):
                 self._failed(info)
             return
         try:
-            src = self_update.prepare(info)
-        except (OSError, ValueError) as e:
+            src = self_update.prepare_setup(info) if self.kind == "setup" else self_update.prepare(info)
+        except (OSError, ValueError, zipfile.BadZipFile) as e:
             self._failed(str(e))
             return
         self.progress.setVisible(False)

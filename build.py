@@ -1,5 +1,6 @@
-"""Baut die portable Version: dist/PDF-Editor-<Version>-portable.zip (Programm) und
-dist/PDF-Editor-<Version>-quellcode.zip (Quellcode, getrennt – AGPL Abschnitt 6 d: am selben Ort angeboten)
+"""Baut den PDF Editor: dist/PDF-Editor-<Version>-portable.zip (Programm), dist/PDF-Editor-<Version>-Setup.exe
+(Installationsprogramm, braucht Inno Setup 6: winget install JRSoftware.InnoSetup – Skript: installer/PDF Editor.iss)
+und dist/PDF-Editor-<Version>-quellcode.zip (Quellcode, getrennt – AGPL Abschnitt 6 d: am selben Ort angeboten)
 
 Aufruf (im Projektordner):  python build.py
                              python build.py --release   (zusätzlich auf GitHub veröffentlichen, s. u.)
@@ -38,7 +39,7 @@ from pdfeditor import APP_NAME, __version__  # noqa: E402
 # Quellcode, der dem ZIP beiliegt (PyMuPDF steht unter der AGPL: Weitergabe nur mit Quellcode)
 SOURCE_FILES = ["main.py", "build.py", "requirements.txt", "requirements-dev.txt", "README.md", "CHANGELOG.md",
                 "PDF Editor starten.bat", "Feedback lesen.bat", "LIESMICH.txt", "LICENSE", "LIZENZEN.txt"]
-SOURCE_DIRS = ["pdfeditor", "tools", "licenses"]
+SOURCE_DIRS = ["pdfeditor", "tools", "licenses", "installer"]
 # Liegen neben der .exe (Weitergabe: Lizenz der AGPL/LGPL-Teile muss beiliegen)
 LEGAL_FILES = ["LICENSE", "LIZENZEN.txt"]
 LEGAL_DIR = "licenses"
@@ -325,8 +326,8 @@ def check_release_ready():
                          f"{behind} nicht geholt) – erst angleichen.")
 
 
-def publish(zip_path, source_zip):
-    """Versionsnummer und Änderungsliste committen und pushen, dann beide ZIPs als Release „v<Version>“ hochladen."""
+def publish(zip_path, source_zip, setup):
+    """Versionsnummer und Änderungsliste committen und pushen, dann Setup und beide ZIPs als Release „v<Version>“."""
     from pdfeditor import updates
     tag = f"v{__version__}"
     print(f"== GitHub-Release {tag}")
@@ -337,9 +338,10 @@ def publish(zip_path, source_zip):
         r = git(*args)
         if r.returncode != 0:
             raise SystemExit(f"git {args[0]} fehlgeschlagen:\n{r.stderr}")
-    notes = ("\n".join(f"- {c}" for c in changes) + "\n\nPortable Version: ZIP entpacken und „PDF Editor.exe“ starten "
-             "(vorher den alten Ordner „PDF Editor“ ersetzen). Der Quellcode liegt als eigenes ZIP bei.")
-    r = subprocess.run([updates.gh_path(), "release", "create", tag, zip_path, source_zip, "--repo", updates.REPO,
+    notes = ("\n".join(f"- {c}" for c in changes) + "\n\nInstallieren: „…-Setup.exe“ ausführen (ohne Administrator"
+             "rechte, mit Startmenü-Eintrag). Portable Version: ZIP entpacken und „PDF Editor.exe“ starten (vorher den "
+             "alten Ordner „PDF Editor“ ersetzen). Der Quellcode liegt als eigenes ZIP bei.")
+    r = subprocess.run([updates.gh_path(), "release", "create", tag, setup, zip_path, source_zip, "--repo", updates.REPO,
                         "--target", "main", "--title", f"{APP_NAME} {__version__}", "--notes", notes],
                        cwd=ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace")
     if r.returncode != 0:
@@ -350,8 +352,8 @@ def publish(zip_path, source_zip):
 # Geheimer Gist zum Weitergeben: nicht auffindbar, aber jeder mit dem Link kann herunterladen. Das ZIP liegt dort
 # unter festem Namen – der Download-Link bleibt bei jeder Version gleich und liefert immer die neueste.
 # (Adressen stehen in pdfeditor/updates.py – „Nach Updates suchen“ liest die version.json aus dem Gist)
-from pdfeditor.updates import (GIST_DOWNLOAD, GIST_ID, GIST_PAGE, GIST_SOURCE, GIST_SOURCE_ZIP,  # noqa: E402
-                               GIST_ZIP)
+from pdfeditor.updates import (GIST_DOWNLOAD, GIST_ID, GIST_PAGE, GIST_SETUP, GIST_SETUP_EXE,  # noqa: E402
+                               GIST_SOURCE, GIST_SOURCE_ZIP, GIST_ZIP)
 
 
 def sha256(path):
@@ -362,38 +364,46 @@ def sha256(path):
     return h.hexdigest()
 
 
-def update_gist(zip_path, source_zip):
-    """Download-Gist auf diese Version setzen. Ein Gist ist ein Git-Repository; das ZIP (binär) geht nur per git push
-    hinein. Jeder Stand ersetzt den vorigen ganz (ohne Verlauf), sonst wüchse der Gist mit jeder Version um ~55 MB.
-    version.json: Version, Prüfsumme/Größe fürs Selbst-Update und die Änderungsliste (Anzeige im Programm)."""
+def update_gist(zip_path, source_zip, setup):
+    """Download-Gist auf diese Version setzen. Ein Gist ist ein Git-Repository; ZIPs und Setup (binär) gehen nur per git
+    push hinein. Jeder Stand ersetzt den vorigen ganz (ohne Verlauf), sonst wüchse der Gist mit jeder Version um
+    ~100 MB. version.json: Version, Prüfsummen/Größen fürs Selbst-Update (ZIP für die portable, Setup für die
+    installierte Version) und die Änderungsliste (Anzeige im Programm)."""
     work = os.path.join(BUILD, "gist")
     remove_tree(work)
     os.makedirs(work)
     shutil.copy2(zip_path, os.path.join(work, GIST_ZIP))
     shutil.copy2(source_zip, os.path.join(work, GIST_SOURCE_ZIP))
+    shutil.copy2(setup, os.path.join(work, GIST_SETUP_EXE))
     shutil.copy2(CHANGELOG, os.path.join(work, "CHANGELOG.md"))
     changelog = [{"version": v, "date": d, "changes": c} for v, d, c in read_changelog() if v != "Neu"][:20]
     with open(os.path.join(work, "version.json"), "w", encoding="utf-8") as f:  # für „Nach Updates suchen“
         json.dump({"version": __version__, "date": datetime.date.today().isoformat(),
                    "download": GIST_DOWNLOAD, "page": GIST_PAGE, "source": GIST_SOURCE,
                    "sha256": sha256(zip_path), "size": os.path.getsize(zip_path),
+                   "setup": GIST_SETUP, "setup_sha256": sha256(setup), "setup_size": os.path.getsize(setup),
                    "changelog": changelog}, f, ensure_ascii=False, indent=2)
     news = next((c for v, _d, c in read_changelog() if v == __version__), [])
     size = os.path.getsize(zip_path) / 1024 / 1024
+    setup_size = os.path.getsize(setup) / 1024 / 1024
     today = datetime.date.today().strftime("%d.%m.%Y")
     with open(os.path.join(work, "PDF Editor – Download.md"), "w", encoding="utf-8") as f:
         f.write(f"""# PDF Editor – Download
 
-**Version {__version__}** vom {today} · Windows 10/11 · {size:.0f} MB
+**Version {__version__}** vom {today} · Windows 10/11
 
-## ⬇️ [PDF Editor herunterladen]({GIST_DOWNLOAD})
+## ⬇️ [PDF Editor installieren]({GIST_SETUP}) ({setup_size:.0f} MB)
 
-1. ZIP herunterladen (Link oben – er liefert immer die neueste Version)
-2. Entpacken, z. B. auf den Desktop
-3. Im Ordner „PDF Editor“ die Datei **PDF Editor.exe** starten – keine Installation, kein Python nötig
+Setup herunterladen und ausführen – keine Administratorrechte nötig. Legt einen Startmenü-Eintrag an, bietet den
+PDF Editor unter „Öffnen mit“ für PDFs an und lässt sich unter „Einstellungen → Apps“ wieder entfernen.
 
-Neue Version: im Programm „Einstellungen → Updates & Feedback → Nach Updates suchen“ → „Jetzt aktualisieren“ –
-oder den alten Ordner „PDF Editor“ durch den neuen ersetzen. Einstellungen bleiben erhalten.
+## ⬇️ [Portable Version (ZIP)]({GIST_DOWNLOAD}) ({size:.0f} MB)
+
+Ohne Installation, z. B. für einen USB-Stick: ZIP entpacken und im Ordner „PDF Editor“ die Datei
+**PDF Editor.exe** starten.
+
+Beide Links liefern immer die neueste Version. Neue Version: im Programm „Einstellungen → Updates & Feedback →
+Nach Updates suchen“ → „Jetzt aktualisieren“. Einstellungen bleiben erhalten.
 
 Windows warnt evtl. („Der Computer wurde durch Windows geschützt“), weil das Programm nicht signiert ist:
 „Weitere Informationen“ → „Trotzdem ausführen“.
@@ -426,6 +436,8 @@ def main():
     release = "--release" in sys.argv[1:]
     if release:
         check_release_ready()
+        if find_iscc() is None:  # installierte Versionen aktualisieren sich über das Setup aus dem Gist
+            raise SystemExit("--release: Inno Setup 6 nicht gefunden (winget install JRSoftware.InnoSetup).")
     check_legal()
     os.makedirs(BUILD, exist_ok=True)
     os.makedirs(DIST, exist_ok=True)
@@ -467,13 +479,50 @@ def main():
                 # im ZIP liegt alles im Ordner „PDF Editor“ (gleicher Name bei jeder Version -> Update = ersetzen)
                 z.write(full, os.path.join(APP_NAME, os.path.relpath(full, app_dir)))
     source_zip = make_source_zip()
-    size = os.path.getsize(zip_path) / 1024 / 1024
-    print(f"\nFertig: {zip_path} ({size:.0f} MB)\n       {source_zip} "
-          f"({os.path.getsize(source_zip) / 1024 / 1024:.1f} MB)")
+    print("== Installationsprogramm (Inno Setup)")
+    setup = make_setup(app_dir, icon)
+    if setup is None:
+        print("   übersprungen: Inno Setup 6 nicht gefunden (winget install JRSoftware.InnoSetup)")
+    mb = lambda p: os.path.getsize(p) / 1024 / 1024  # noqa: E731
+    print(f"\nFertig: {zip_path} ({mb(zip_path):.0f} MB)\n       {source_zip} ({mb(source_zip):.1f} MB)")
+    if setup:
+        print(f"       {setup} ({mb(setup):.0f} MB)")
     print(f"Zum Testen ohne Entpacken: {os.path.join(app_dir, APP_NAME + '.exe')}")
     if release:
-        publish(zip_path, source_zip)
-        update_gist(zip_path, source_zip)
+        publish(zip_path, source_zip, setup)
+        update_gist(zip_path, source_zip, setup)
+
+
+INSTALLER_SCRIPT = os.path.join(ROOT, "installer", "PDF Editor.iss")
+
+
+def find_iscc():
+    """Inno-Setup-Compiler (ISCC.exe) – Installation pro Benutzer oder für alle; None, wenn nicht installiert."""
+    found = shutil.which("ISCC")
+    if found:
+        return found
+    for base in (os.path.join(os.environ.get("LOCALAPPDATA", ""), "Programs"),
+                 os.environ.get("ProgramFiles(x86)", ""), os.environ.get("ProgramFiles", "")):
+        path = os.path.join(base, "Inno Setup 6", "ISCC.exe")
+        if base and os.path.isfile(path):
+            return path
+    return None
+
+
+def make_setup(app_dir, icon):
+    """Installationsprogramm dist/PDF-Editor-<Version>-Setup.exe aus dem fertigen Programmordner (Inno Setup)."""
+    iscc = find_iscc()
+    if iscc is None:
+        return None
+    path = os.path.join(DIST, f"PDF-Editor-{__version__}-Setup.exe")
+    if os.path.exists(path):
+        os.remove(path)
+    r = subprocess.run([iscc, "/Q", f"/DAppVersion={__version__}", f"/DSourceDir={app_dir}", f"/DOutputDir={DIST}",
+                        f"/DIconFile={icon}", INSTALLER_SCRIPT], cwd=ROOT, capture_output=True, text=True,
+                       encoding="utf-8", errors="replace")
+    if r.returncode != 0 or not os.path.isfile(path):
+        raise SystemExit(f"Inno Setup fehlgeschlagen:\n{r.stdout}\n{r.stderr}")
+    return path
 
 
 def make_source_zip():

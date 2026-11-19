@@ -2333,4 +2333,4 @@ class MainWindow(QMainWindow):
         update, self._pending_update = getattr(self, "_pending_update", None), None
         if update is not None:  # Selbst-Update: Dateien ersetzen, sobald dieser Prozess beendet ist
             from . import self_update
-            self_update.launch(self_update.write_script(update, self_update.install_dir(), os.getpid()))
+            self_update.launch(self_update.script_for(update, os.getpid()))  # Setup (installiert) oder Dateien (portabel)

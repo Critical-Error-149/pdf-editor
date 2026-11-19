@@ -1,11 +1,14 @@
-"""Selbst-Update der portablen Version – ohne Installation, solange der Programmordner beschreibbar ist.
+"""Selbst-Update – portable Version (ZIP) und installierte Version (Setup).
 
-Ablauf: Downloader lädt das Programm-ZIP aus dem Download-Gist (Prüfsumme SHA-256 und Größe aus version.json), prepare()
-entpackt und prüft es, write_script() schreibt ein kleines PowerShell-Skript. Dieses startet erst, wenn das Programm
-regulär geschlossen wurde (MainWindow.closeEvent – ungespeicherte Änderungen werden vorher abgefragt), wartet, bis
-der Prozess beendet ist, legt die alten Programmdateien zur Seite, kopiert die neuen hinein und startet das Programm
-neu. Geht beim Kopieren etwas schief, kommen die alten Dateien zurück. Einstellungen (Registry), Logs (AppData) und
-eigene Dateien im Programmordner bleiben unberührt.
+Portable Version: Downloader lädt das Programm-ZIP aus dem Download-Gist (Prüfsumme SHA-256 und Größe aus
+version.json), prepare() entpackt und prüft es, write_script() schreibt ein kleines PowerShell-Skript. Dieses startet
+erst, wenn das Programm regulär geschlossen wurde (MainWindow.closeEvent – ungespeicherte Änderungen werden vorher
+abgefragt), wartet, bis der Prozess beendet ist, legt die alten Programmdateien zur Seite, kopiert die neuen hinein
+und startet das Programm neu. Geht beim Kopieren etwas schief, kommen die alten Dateien zurück.
+
+Installierte Version (Inno Setup, erkennbar an unins000.exe neben der .exe): statt des ZIPs wird das Setup geladen und
+nach dem Beenden still ausgeführt (write_setup_script) – so stimmen danach auch Versionsangabe und Deinstallation.
+Einstellungen (Registry), Logs (AppData) und eigene Dateien im Programmordner bleiben in beiden Fällen unberührt.
 """
 from __future__ import annotations
 
@@ -29,11 +32,28 @@ def install_dir():
     return os.path.dirname(sys.executable) if getattr(sys, "frozen", False) else None
 
 
-def can_self_update():
+def is_installed():
+    """Mit dem Installationsprogramm installiert (statt portabel entpackt)?"""
+    folder = install_dir()
+    return bool(folder) and os.path.isfile(os.path.join(folder, "unins000.exe"))
+
+
+def update_source(data):
+    """Was geladen wird: (Art „setup“/„zip“, URL, SHA-256, Größe). Installierte Version → Setup, sofern version.json
+    eines anbietet (ältere Gist-Stände nicht – dann ersetzt das ZIP die Dateien, der Ordner ist ja beschreibbar)."""
+    from . import updates
+    if is_installed() and data.get("setup") and data.get("setup_sha256"):
+        return "setup", data["setup"], data["setup_sha256"], data.get("setup_size")
+    return "zip", data.get("download") or updates.GIST_DOWNLOAD, data.get("sha256"), data.get("size")
+
+
+def can_self_update(kind="zip"):
     """(True, "") oder (False, Grund für die Anzeige)."""
     folder = install_dir()
     if folder is None:
         return False, "Beim Start aus dem Quellcode aktualisiert man mit „git pull“."
+    if kind == "setup":  # das Setup fragt bei Bedarf selbst nach Administratorrechten
+        return True, ""
     try:
         fd, probe = tempfile.mkstemp(dir=folder, prefix=".schreibtest")
         os.close(fd)
@@ -45,18 +65,18 @@ def can_self_update():
 
 
 class Downloader(QObject):
-    """Lädt das ZIP nach WORK und prüft Größe und SHA-256. progress(geladen, gesamt), finished(ok, Pfad/Fehler)."""
+    """Lädt ZIP oder Setup nach WORK und prüft Größe und SHA-256. progress(geladen, gesamt), finished(ok, Pfad/Fehler)."""
     progress = Signal(int, int)
     finished = Signal(bool, str)
 
-    def __init__(self, url, sha256, size, parent=None):
+    def __init__(self, url, sha256, size, parent=None, filename="update.zip"):
         super().__init__(parent)
         self.url, self.sha256, self.size = url, (sha256 or "").lower(), int(size or 0)
         self._net = QNetworkAccessManager(self)
         self._reply = None
         self._file = None
         self._hash = hashlib.sha256()
-        self.path = os.path.join(WORK, "update.zip")
+        self.path = os.path.join(WORK, filename)
         self._cancelled = False
 
     def start(self):
@@ -123,6 +143,17 @@ def prepare(zip_path):
     return src
 
 
+SETUP_FILE = "PDF-Editor-Setup.exe"
+
+
+def prepare_setup(path):
+    """Geladenes Setup prüfen (Windows-Programm). Rückgabe: Pfad."""
+    with open(path, "rb") as f:
+        if f.read(2) != b"MZ":
+            raise ValueError("Die geladene Datei ist kein Installationsprogramm.")
+    return path
+
+
 def _ps(text):
     return "'" + text.replace("'", "''") + "'"
 
@@ -180,6 +211,41 @@ Start-Process -FilePath $exe
     with open(path, "w", encoding="utf-8-sig") as f:  # mit BOM: Windows PowerShell 5.1 liest sonst ANSI
         f.write(script)
     return path
+
+
+def write_setup_script(setup, dst, pid):
+    """PowerShell-Skript, das nach dem Ende von Prozess pid das Setup still ausführt und das Programm neu startet.
+    Das Setup übernimmt Ordner und Aufgaben der bisherigen Installation; schlägt es fehl, bleibt die alte Version."""
+    log = os.path.join(WORK, "update.log")
+    script = f"""$ErrorActionPreference = 'Stop'
+$setup = {_ps(setup)}
+$log = {_ps(log)}
+$exe = Join-Path {_ps(dst)} {_ps(EXE)}
+function Log($m) {{ Add-Content -Path $log -Value ((Get-Date -Format 'HH:mm:ss') + ' ' + $m) -Encoding UTF8 }}
+try {{
+    Log 'Warte auf das Ende des Programms ({pid})'
+    try {{ Wait-Process -Id {pid} -Timeout 120 }} catch {{ }}
+    Start-Sleep -Milliseconds 700
+    Log 'Starte das Setup'
+    $p = Start-Process -FilePath $setup -Wait -PassThru -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES',
+        '/NORESTART', '/NOCANCEL', '/CLOSEAPPLICATIONS', ('/LOG="' + (Join-Path {_ps(WORK)} 'setup.log') + '"'))
+    if ($p.ExitCode -eq 0) {{ Log 'Aktualisiert' }} else {{ Log ('Fehler: Setup endete mit Code ' + $p.ExitCode) }}
+}} catch {{
+    Log ('Fehler: ' + $_)
+}}
+Start-Process -FilePath $exe
+"""
+    path = os.path.join(WORK, "aktualisieren.ps1")
+    with open(path, "w", encoding="utf-8-sig") as f:
+        f.write(script)
+    return path
+
+
+def script_for(update, pid):
+    """Passendes Hilfsskript: update ist das geladene Setup (.exe) oder der entpackte Programmordner."""
+    if update.lower().endswith(".exe"):
+        return write_setup_script(update, install_dir(), pid)
+    return write_script(update, install_dir(), pid)
 
 
 def launch(script):

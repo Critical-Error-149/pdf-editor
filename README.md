@@ -4,8 +4,9 @@ Windows-PDF-Editor auf Basis von **PySide6 (Qt)** und **PyMuPDF**.
 
 ## ⬇️ [Neueste Version herunterladen](https://github.com/Critical-Error-149/pdf-editor/releases/latest)
 
-Dort unter „Assets“ die Datei `PDF-Editor-<Version>-portable.zip` laden, entpacken und `PDF Editor.exe` starten –
-keine Installation, kein Python nötig. Ältere Versionen: [alle Releases](https://github.com/Critical-Error-149/pdf-editor/releases).
+Dort unter „Assets“ entweder `PDF-Editor-<Version>-Setup.exe` (Installation ohne Administratorrechte, mit
+Startmenü-Eintrag und „Öffnen mit“ für PDFs) oder `PDF-Editor-<Version>-portable.zip` (entpacken und
+`PDF Editor.exe` starten) laden – kein Python nötig. Ältere Versionen: [alle Releases](https://github.com/Critical-Error-149/pdf-editor/releases).
 
 **Zum Weitergeben an andere** (ohne Zugang zu diesem privaten Repository):
 [Download-Gist](https://gist.github.com/Critical-Error-149/79b10e874ee6302909641519633e18c5) – Anleitung und
@@ -28,8 +29,20 @@ pip install -r requirements-dev.txt
 python build.py
 ```
 
-Ergebnis: `dist/PDF-Editor-<Version>-portable.zip` mit dem Ordner `PDF Editor` (darin `PDF Editor.exe`,
-`LIESMICH.txt` und der Quellcode). Keine Installation nötig – entpacken und starten.
+Ergebnis in `dist/`:
+- `PDF-Editor-<Version>-portable.zip` mit dem Ordner `PDF Editor` (darin `PDF Editor.exe` und `LIESMICH.txt`) –
+  keine Installation nötig, entpacken und starten
+- `PDF-Editor-<Version>-Setup.exe` – Installationsprogramm (braucht beim Bauen [Inno Setup 6](https://jrsoftware.org/isinfo.php):
+  `winget install JRSoftware.InnoSetup`; fehlt es, wird das Setup übersprungen)
+- `PDF-Editor-<Version>-quellcode.zip`
+
+Das Setup (`installer/PDF Editor.iss`) installiert pro Benutzer nach `%LOCALAPPDATA%\Programs\PDF Editor` (keine
+Administratorrechte; wahlweise auch für alle Benutzer). Es legt einen Startmenü-Eintrag an, auf Wunsch ein
+Desktop-Symbol, und meldet den PDF Editor für „Öffnen mit“/Standard-Apps an (ProgID `PDFEditor.Dokument`).
+Beim Deinstallieren fragt es, ob alles restlos entfernt werden soll: Einstellungen (`HKCU\Software\PDFEditor`)
+und `%LOCALAPPDATA%\PDF Editor`. PDF-Dateien bleiben immer erhalten. Still: `unins000.exe /VERYSILENT [/RESTLOS]`.
+Läuft das Programm noch, bricht die Deinstallation mit einem Hinweis ab. Das Programm meldet sich dafür über das
+Mutex `PDFEditorLaeuft`.
 
 Neue Version weitergeben: `python build.py` ausführen und das neue ZIP verschicken. Jeder Build erhöht
 die Versionsnummer automatisch (letzte Stelle von `__version__` in `pdfeditor/__init__.py`), so hat jedes
@@ -38,9 +51,9 @@ bleiben erhalten (Registrierung).
 
 Auf GitHub veröffentlichen: Änderungen unter „Neu“ in `CHANGELOG.md` eintragen (Pflicht), dann
 `python build.py --release`. Das baut wie oben, macht aus „Neu“ den Abschnitt der neuen Version, committet und pusht
-Versionsnummer und Änderungsliste, lädt Programm- und Quellcode-ZIP als Release `v<Version>` ins Repository und
-aktualisiert den Download-Gist (beide ZIPs, `CHANGELOG.md`, `version.json` mit Prüfsumme und Änderungsliste;
-`gh` muss angemeldet sein).
+Versionsnummer und Änderungsliste, lädt Setup, Programm- und Quellcode-ZIP als Release `v<Version>` ins Repository
+und aktualisiert den Download-Gist (Setup, beide ZIPs, `CHANGELOG.md`, `version.json` mit Prüfsummen und
+Änderungsliste; `gh` muss angemeldet sein, Inno Setup installiert).
 
 Updates im Programm: Kurz nach dem Start prüft das Programm im Hintergrund `version.json` im Gist (abschaltbar unter
 Einstellungen → Updates & Feedback; dort auch „Nach Updates suchen“) – ohne Anmeldung, also auch bei anderen. Bei
@@ -48,7 +61,10 @@ einer neuen Version zeigt ein Fenster die Änderungen; „Jetzt aktualisieren“
 Prüfsumme (SHA-256), entpackt es und schließt das Programm (ungespeicherte Änderungen werden abgefragt). Ein kleines
 PowerShell-Skript (`pdfeditor/self_update.py`) ersetzt dann die Programmdateien – die alten werden vorher zur Seite
 gelegt und bei einem Fehler wiederhergestellt – und startet die neue Version. Das funktioniert ohne Installation,
-solange der Programmordner beschreibbar ist (sonst: „Download-Seite öffnen“). Für HTTPS behält der Build nur die
+solange der Programmordner beschreibbar ist (sonst: „Download-Seite öffnen“). Die installierte Version (erkennbar an
+`unins000.exe` neben der .exe) lädt stattdessen das Setup und führt es nach dem Schließen still aus. So stimmen
+auch Versionsangabe und Deinstallation. Bietet `version.json` noch kein Setup an, ersetzt sie die Dateien wie die
+portable Version. Für HTTPS behält der Build nur die
 Windows-eigene TLS-Erweiterung von Qt (Schannel); OpenSSL ist nicht enthalten.
 
 Quellcode: liegt nicht mehr im Programm-ZIP, sondern als eigenes ZIP am selben Ort (GNU AGPL Abschnitt 6 d) – im

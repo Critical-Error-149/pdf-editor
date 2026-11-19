@@ -1,7 +1,17 @@
-PDF Editor – portable Version
-=============================
+PDF Editor
+==========
 
-STARTEN
+Den PDF Editor gibt es in zwei Formen: mit Installationsprogramm („PDF-Editor-Setup.exe“) oder
+portabel als ZIP. Beide können dasselbe; die Abschnitte unten nennen die Unterschiede.
+
+INSTALLIEREN (Setup)
+  „PDF-Editor-Setup.exe“ ausführen – Administratorrechte sind nicht nötig. Das Programm landet in
+  %LOCALAPPDATA%\Programs\PDF Editor, bekommt einen Eintrag im Startmenü und auf Wunsch ein
+  Desktop-Symbol und wird unter „Öffnen mit“ für PDF-Dateien angeboten. Als Standard-App für PDFs
+  festlegen: Rechtsklick auf eine PDF → „Öffnen mit“ → „Andere App auswählen“ → „PDF Editor“ →
+  „Immer“ (das darf unter Windows nur der Nutzer selbst).
+
+STARTEN (portable Version)
   Den ganzen Ordner „PDF Editor“ irgendwohin entpacken (z. B. nach „Dokumente“ oder auf den
   Desktop) und darin „PDF Editor.exe“ doppelklicken. Eine Installation ist nicht nötig, Python
   wird nicht gebraucht.
@@ -13,17 +23,24 @@ STARTEN
   Beim ersten Start zeigt Windows evtl. „Der Computer wurde durch Windows geschützt“, weil das
   Programm nicht digital signiert ist: auf „Weitere Informationen“ → „Trotzdem ausführen“.
 
-PDFs MIT DEM PROGRAMM ÖFFNEN
+PDFs MIT DEM PROGRAMM ÖFFNEN (portable Version)
   Eine PDF-Datei auf „PDF Editor.exe“ ziehen, oder: Rechtsklick auf eine PDF → „Öffnen mit“ →
   „Andere App auswählen“ → „Weitere Apps“ → „Eine andere App auf diesem PC suchen“ → die .exe wählen.
 
 AKTUALISIEREN
-  Programm schließen, den alten Ordner „PDF Editor“ löschen und den aus dem neuen ZIP an dieselbe
-  Stelle entpacken. Einstellungen (Stifte, Speicherorte, zuletzt geöffnete Dateien) bleiben erhalten.
+  Einfach: Das Programm sucht beim Start nach neuen Versionen (oder „Einstellungen → Updates &
+  Feedback → Nach Updates suchen“) → „Jetzt aktualisieren“. Es lädt die neue Version, schließt sich
+  und startet aktualisiert neu – installiert über das Setup, portabel durch Ersetzen der Dateien.
+  Von Hand: das neue Setup ausführen bzw. den alten Ordner „PDF Editor“ durch den aus dem neuen ZIP
+  ersetzen. Einstellungen (Stifte, Speicherorte, zuletzt geöffnete Dateien) bleiben erhalten.
   Die Version steht unter „Hilfe → Über PDF Editor“.
 
 DEINSTALLIEREN
-  Den Ordner „PDF Editor“ löschen. Wer auch Einstellungen und Protokolle entfernen möchte:
+  Installiert: „Einstellungen → Apps → Installierte Apps → PDF Editor → Deinstallieren“. Dabei fragt
+  das Programm, ob auch alle persönlichen Daten entfernt werden sollen (Einstellungen, Favoriten,
+  gespeicherte PDF-Passwörter, Protokolle). Mit „Ja“ bleibt nichts zurück. Eigene PDF-Dateien
+  werden in keinem Fall gelöscht.
+  Portabel: den Ordner „PDF Editor“ löschen. Wer auch Einstellungen und Protokolle entfernen möchte:
     - Einstellungen: Registrierung, Schlüssel HKEY_CURRENT_USER\Software\PDFEditor
     - Fehlerprotokolle: Ordner %LOCALAPPDATA%\PDF Editor
       (in die Adressleiste des Explorers eingeben)
