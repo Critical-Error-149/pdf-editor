@@ -104,6 +104,75 @@ class InsertPagesDialog(QDialog):
         return pos, self.count.value(), w, h, self.template.currentText()
 
 
+class TemplateDialog(QDialog):
+    """Vorlage und Format einer selbst eingefügten Seite ändern."""
+
+    def __init__(self, parent, template, size):
+        super().__init__(parent)
+        self.setWindowTitle("Vorlage ändern")
+        self.current_size = size
+        layout = QVBoxLayout(self)
+        form = QFormLayout()
+        self.template = QComboBox()
+        self.template.addItems(PAGE_TEMPLATES)
+        self.template.setCurrentText(template)
+        form.addRow("Vorlage:", self.template)
+        self.format = QComboBox()
+        self.format.addItem("Wie bisher", "current")
+        for name in PAGE_FORMATS:
+            self.format.addItem(name, name)
+        self.format.addItem("Benutzerdefiniert", "custom")
+        form.addRow("Format:", self.format)
+        self.custom_w = QDoubleSpinBox()
+        self.custom_h = QDoubleSpinBox()
+        for sb, v in ((self.custom_w, size[0] / MM), (self.custom_h, size[1] / MM)):
+            sb.setRange(10, 5000)
+            sb.setDecimals(1)
+            sb.setSuffix(" mm")
+            sb.setValue(v)
+        custom_row = QHBoxLayout()
+        custom_row.addWidget(self.custom_w)
+        custom_row.addWidget(self.custom_h)
+        self.custom_widget = _wrap(custom_row)
+        form.addRow("Breite × Höhe:", self.custom_widget)
+        self.portrait = QRadioButton("Hochformat")
+        self.landscape = QRadioButton("Querformat")
+        (self.landscape if size[0] > size[1] else self.portrait).setChecked(True)
+        grp = QButtonGroup(self)
+        grp.addButton(self.portrait)
+        grp.addButton(self.landscape)
+        orient_row = QHBoxLayout()
+        orient_row.addWidget(self.portrait)
+        orient_row.addWidget(self.landscape)
+        self.orient_widget = _wrap(orient_row)
+        form.addRow("Ausrichtung:", self.orient_widget)
+        layout.addLayout(form)
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+        self.format.currentIndexChanged.connect(self._update)
+        self._update()
+
+    def _update(self):
+        f = self.format.currentData()
+        self.custom_widget.setEnabled(f == "custom")
+        self.orient_widget.setEnabled(f != "custom")
+
+    def values(self):
+        """(Vorlage, (Breite, Höhe) in pt)"""
+        f = self.format.currentData()
+        if f == "current":
+            w, h = self.current_size
+            if (w > h) != self.landscape.isChecked():  # nur die Ausrichtung gewechselt
+                w, h = h, w
+        elif f == "custom":
+            w, h = self.custom_w.value() * MM, self.custom_h.value() * MM
+        else:
+            w, h = format_size(f, self.landscape.isChecked())
+        return self.template.currentText(), (w, h)
+
+
 def _wrap(layout):
     w = QWidget()
     layout.setContentsMargins(0, 0, 0, 0)

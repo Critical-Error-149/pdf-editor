@@ -59,6 +59,11 @@ die Grafikkarte nach einigen Sekunden erneut (höchstens zweimal, jeweils mit Pr
   Die Vorschau zeigt Papier und nicht bedruckbaren Rand des Druckers; „Druckereinstellungen …“ öffnet den
   Windows-Dialog für Treiberoptionen. Die Einstellungen werden gemerkt
 - Seiten an beliebiger Stelle einfügen: leer, liniert, kariert, Punktraster; jedes Format (A3–A6, Letter, Folie, benutzerdefiniert in mm)
+- Vorlage selbst eingefügter Seiten nachträglich ändern (Rechtsklick/langes Drücken/Stift-Seitentaste auf die Seite
+  oder in der Miniaturleiste → „Vorlage ändern …“): Muster (leer, liniert, kariert, Punktraster) und Format
+  (z. B. A4 → A3, Ausrichtung, eigene Maße); der Hintergrund wird neu gezeichnet. Sind Zeichnungen auf der Seite,
+  fragt das Programm, ob sie (und ihre Strichdicke) mitskaliert werden. Neue Vorlagenseiten sind im PDF
+  gekennzeichnet, ältere werden am Inhalt erkannt (nur Linien/Punkte in den Vorlagenfarben)
 - Seiten drehen mit „Breite angleichen“ (Schalter neben den Dreh-Knöpfen und in den Kontextmenüs, Standard an):
   die gedrehte Seite wird auf die Breite der übrigen Seiten skaliert – Inhalt verlustfrei per Transformationsmatrix,
   Anmerkungen mit; sind Zeichnungen auf der Seite, fragt das Programm, ob Zeichnungen und Strichdicke mitskaliert

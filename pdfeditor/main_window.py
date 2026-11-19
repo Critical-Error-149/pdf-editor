@@ -1858,6 +1858,44 @@ class MainWindow(QMainWindow):
         pages = self.thumbs.selected_pages() if self.thumbs.hasFocus() else []
         return pages or [self.view.current_page()]
 
+    def change_template(self, pages):
+        """Vorlage/Format selbst eingefügter Seiten ändern (Kontextmenü der Seite bzw. Miniaturleiste).
+        Ändert sich die Größe einer Seite mit Zeichnungen, vorher fragen: Zeichnungen/Strichdicke mitskalieren?"""
+        from .insert_dialog import TemplateDialog
+        from .document import PAGE_FORMATS
+        doc = self.document
+        pages = [i for i in pages if doc.template_of(i) is not None]
+        if not pages:
+            return
+        r = doc.page(pages[0]).rect
+        dlg = TemplateDialog(self, doc.template_of(pages[0]), (r.width, r.height))
+        if not dlg.exec():
+            return
+        template, (w, h) = dlg.values()
+        annots = widths = True
+        resized = [i for i in pages if abs(doc.page(i).rect.width - w) > 0.5 or abs(doc.page(i).rect.height - h) > 0.5]
+        with_drawings = [i for i in resized if doc.has_drawings(i)]
+        if with_drawings:
+            from . import scale_dialog
+
+            def name(width, height):
+                for n, (fw, fh) in PAGE_FORMATS.items():
+                    if {round(width), round(height)} == {fw, fh}:
+                        return n
+                return f"{width / 72 * 25.4:.0f}×{height / 72 * 25.4:.0f} mm"
+
+            old = doc.page(with_drawings[0]).rect
+            f = w / old.width
+            what = "Die Seite wird" if len(pages) == 1 else "Die Seiten werden"
+            choice = scale_dialog.ask(self, f"{what} von {name(old.width, old.height)} auf {name(w, h)} "
+                                            f"{'vergrößert' if f > 1 else 'verkleinert' if f < 1 else 'geändert'} "
+                                            f"(Breite auf {f * 100:.0f} %). Darauf sind Zeichnungen.")
+            if choice is None:
+                return
+            annots, widths = choice
+        for i in pages:
+            doc.change_template(i, template, (w, h) if i in resized else None, annots, widths)
+
     def rotate_pages(self, pages, degrees):
         """Seiten drehen – mit „Breite angleichen“, wenn eingeschaltet (Menüband, Kontextmenüs, Tastenkürzel).
         Wird dabei eine Seite mit Zeichnungen skaliert, vorher fragen: Zeichnungen und Strichdicke mitskalieren?"""

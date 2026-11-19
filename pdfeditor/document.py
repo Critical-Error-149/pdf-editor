@@ -22,6 +22,10 @@ PAGE_FORMATS = {
 }
 
 PAGE_TEMPLATES = ["Leer", "Liniert", "Kariert", "Punktraster"]
+# Kennzeichnung selbst eingefügter Seiten im Seiten-Objekt (Vorlage nachträglich änderbar)
+TEMPLATE_KEY = "PDFEditorVorlage"
+# Farben, mit denen draw_template zeichnet (erkennt auch ältere Vorlagenseiten ohne Kennzeichnung)
+_TEMPLATE_COLORS = {(0.75, 0.82, 0.92), (0.6, 0.65, 0.75)}
 
 
 def _have_operation(pdf):
@@ -776,7 +780,49 @@ class PdfDocument(QObject):
         self.changed.emit(True)
 
     def _insert_blank(self, index, width, height, template):
-        draw_template(_new_page(self.doc, index, width, height), template)
+        page = _new_page(self.doc, index, width, height)
+        draw_template(page, template)
+        self.doc.xref_set_key(page.xref, TEMPLATE_KEY, fitz.get_pdf_str(template))
+
+    def template_of(self, index):
+        """Vorlage („Leer“, „Liniert“ …) einer selbst eingefügten Seite – None, wenn die Seite echten Inhalt hat.
+        Ältere Seiten ohne Kennzeichnung: kein Text, keine Bilder, nur Linien/Punkte in den Vorlagenfarben."""
+        with self.reading():
+            page = self.doc[index]
+            kind, val = self.doc.xref_get_key(page.xref, TEMPLATE_KEY)
+            if kind == "string" and val in PAGE_TEMPLATES:
+                return val
+            if page.get_images():
+                return None
+            data = b"".join(self.doc.xref_stream(x) or b"" for x in page.get_contents())
+        return _template_from_content(data)
+
+    def change_template(self, index, template, size=None, scale_annots=True, scale_widths=True):
+        """Vorlage und ggf. Format (size = angezeigte Breite, Höhe in pt) einer selbst eingefügten Seite ändern.
+        Der Hintergrund wird neu gezeichnet (Linienabstände bleiben in mm gleich); Zeichnungen bleiben – mit
+        scale_annots im Verhältnis der Breiten skaliert, mit scale_widths auch ihre Strichdicke."""
+        self.checkpoint()
+        doc = self.doc
+        page = doc[index]
+        w, h = page.rect.width, page.rect.height
+        new_w, new_h = size or (w, h)
+        mb = page.mediabox
+        ox, oy = mb.x0, mb.y0
+        if scale_annots and abs(new_w / w - 1) > 0.001:
+            self.scale_annots(index, new_w / w, scale_widths, (ox, oy))
+        uw, uh = (new_h, new_w) if page.rotation % 180 else (new_w, new_h)  # MediaBox ist ungedreht
+        doc.xref_set_key(page.xref, "MediaBox", f"[{ox:g} {oy:g} {ox + uw:g} {oy + uh:g}]")
+        for key in ("CropBox", "TrimBox", "BleedBox", "ArtBox"):
+            if doc.xref_get_key(page.xref, key)[0] != "null":
+                doc.xref_set_key(page.xref, key, "null")
+        nx = doc.get_new_xref()  # Inhalt ersetzen: die Seite enthält nur die alte Vorlage
+        doc.update_object(nx, "<<>>")
+        doc.update_stream(nx, b"")
+        doc.xref_set_key(page.xref, "Contents", f"{nx} 0 R")
+        page = doc[index]
+        draw_template(page, template)
+        doc.xref_set_key(page.xref, TEMPLATE_KEY, fitz.get_pdf_str(template))
+        self.changed.emit(True)
 
     def insert_pdf(self, index: int, path: str, from_page=0, to_page=-1):
         try:
@@ -1979,6 +2025,25 @@ def _load_annot(page, xref):
         return page.load_annot(xref)
     except Exception:
         return None
+
+
+def _template_from_content(data):
+    """Vorlage aus dem Seiteninhalt erkennen (Seiten von draw_template ohne Kennzeichnung) – None bei echtem Inhalt.
+    Bewusst der Inhalt selbst: page.get_drawings() enthielte auch die Anmerkungen (Zeichnungen des Nutzers)."""
+    text = data.decode("latin-1")
+    if not text.strip():
+        return "Leer"
+    if re.search(r"\b(BT|Do|BI|sh)\b", text):  # Text, Bilder, Verläufe -> echter Inhalt
+        return None
+    colors = re.findall(r"([\d.]+) ([\d.]+) ([\d.]+) (?:RG|rg)\b", text)
+    if not colors or any(tuple(round(float(c), 2) for c in col) not in _TEMPLATE_COLORS for col in colors):
+        return None
+    if re.search(r"\sc\b", text):  # Kreise (Bézier-Kurven) -> Punkte
+        return "Punktraster"
+    for x1, _y1, x2, _y2 in re.findall(r"([\d.-]+) ([\d.-]+) m\s+([\d.-]+) ([\d.-]+) l", text):
+        if abs(float(x1) - float(x2)) < 0.01:  # senkrechte Linie -> Karos
+            return "Kariert"
+    return "Liniert"
 
 
 def draw_template(page: fitz.Page, template: str):
