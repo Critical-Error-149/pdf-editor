@@ -220,8 +220,9 @@ class ThumbnailPanel(QListWidget):
             a = mv.addAction("Ans Ende", lambda: self._move(idx, n - 1))
             a.setEnabled(idx < n - 1)
             mv.addAction("An Position …", lambda: win.move_page_dialog(idx))
-        m.addAction("Nach links drehen", lambda: doc.rotate_pages(pages, -90))
-        m.addAction("Nach rechts drehen", lambda: doc.rotate_pages(pages, 90))
+        m.addAction("Nach links drehen", lambda: win.rotate_pages(pages, -90))
+        m.addAction("Nach rechts drehen", lambda: win.rotate_pages(pages, 90))
+        m.addAction(win.act_rotate_fit)  # Schalter: danach so breit wie die übrigen Seiten
         m.addSeparator()
         m.addAction("Als PDF exportieren …", lambda: win.extract_pages(pages))
         if len(pages) == 1:

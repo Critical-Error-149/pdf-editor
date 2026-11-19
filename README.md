@@ -59,6 +59,10 @@ die Grafikkarte nach einigen Sekunden erneut (höchstens zweimal, jeweils mit Pr
   Die Vorschau zeigt Papier und nicht bedruckbaren Rand des Druckers; „Druckereinstellungen …“ öffnet den
   Windows-Dialog für Treiberoptionen. Die Einstellungen werden gemerkt
 - Seiten an beliebiger Stelle einfügen: leer, liniert, kariert, Punktraster; jedes Format (A3–A6, Letter, Folie, benutzerdefiniert in mm)
+- Seiten drehen mit „Breite angleichen“ (Schalter neben den Dreh-Knöpfen und in den Kontextmenüs, Standard an):
+  die gedrehte Seite wird auf die Breite der übrigen Seiten skaliert – Inhalt verlustfrei per Transformationsmatrix,
+  Anmerkungen mit; sind Zeichnungen auf der Seite, fragt das Programm, ob Zeichnungen und Strichdicke mitskaliert
+  werden sollen
 - Andere PDFs oder Bilder als Seiten einfügen, Seiten duplizieren, drehen, löschen, exportieren
 - Bildseiten: Format wählbar (Standard: Breite der vorigen Seite), Einpassen mit weißem/schwarzem/Vorlagen-Rand,
   Strecken oder Füllen, Zuschneiden – auch nachträglich (Rechtsklick → Bildseite bearbeiten), ohne Qualitätsverlust

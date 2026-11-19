@@ -56,6 +56,15 @@ def set_stroke_smoothing(level: int):
     _cache["input/stroke_smoothing"] = int(level)
 
 
+def rotate_fit_width() -> bool:
+    """Gedrehte Seiten auf die Breite der übrigen Seiten skalieren? (Standard: ja)"""
+    return str(_value("pages/rotate_fit_width", "true")).lower() in ("true", "1")
+
+
+def set_rotate_fit_width(on: bool):
+    _set("pages/rotate_fit_width", on)
+
+
 def _set(key, on):
     from PySide6.QtCore import QSettings
     QSettings("PDFEditor", "PDFEditor").setValue(key, "true" if on else "false")

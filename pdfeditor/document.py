@@ -873,12 +873,136 @@ class PdfDocument(QObject):
             self.doc.move_page(src, dst)
         self.changed.emit(True)
 
-    def rotate_pages(self, indices, degrees: int):
+    def rotate_pages(self, indices, degrees: int, fit_width=False, scale_annots=True, scale_widths=True):
+        """Seiten drehen. fit_width: danach auf die Breite der übrigen Seiten skalieren (z. B. ein quer gedrehtes Foto
+        so breit wie die Textseiten daneben statt riesig) – in einem Rückgängig-Schritt mit der Drehung.
+        scale_annots/scale_widths: Zeichnungen bzw. ihre Strichdicke mitskalieren (Nachfrage in der Oberfläche)."""
+        indices = list(indices)
         self.checkpoint()
         for i in indices:
             p = self.doc[i]
             p.set_rotation((p.rotation + degrees) % 360)
+        if fit_width:
+            for i in indices:
+                target = self._reference_width(i, set(indices))
+                width = self.doc[i].rect.width
+                if target and width and abs(target / width - 1) > 0.005:
+                    self._scale_page(i, target / width, scale_annots, scale_widths)
         self.changed.emit(True)
+
+    def rotation_fit_factor(self, index, degrees, exclude):
+        """Faktor, mit dem rotate_pages(fit_width=True) diese Seite skalieren würde – None, wenn gar nicht."""
+        with self.reading():
+            r = self.doc[index].rect
+        width = r.height if degrees % 180 else r.width
+        target = self._reference_width(index, set(exclude))
+        if target and width and abs(target / width - 1) > 0.005:
+            return target / width
+        return None
+
+    # Anmerkungsarten, die keine „Zeichnungen“ sind (beim Skalieren nicht nachfragen)
+    _NOT_DRAWINGS = {fitz.PDF_ANNOT_LINK, fitz.PDF_ANNOT_WIDGET, fitz.PDF_ANNOT_POPUP}
+
+    def has_drawings(self, index):
+        """Hat die Seite Zeichnungen (Striche, Formen, Text, Markierungen, Bilder, Notizen, Medien)?"""
+        with self.reading():
+            return any(t not in self._NOT_DRAWINGS for _x, t, *_ in self.doc[index].annot_xrefs())
+
+    def _reference_width(self, index, exclude, radius=20):
+        """Häufigste angezeigte Breite der Seiten in der Nähe (ohne die gerade gedrehten) – None, wenn es keine gibt.
+        Nur die Nachbarn: bei sehr großen Dokumenten müsste sonst jede Seite geladen werden."""
+        from collections import Counter
+        near = [i for i in range(max(0, index - radius), min(self.page_count, index + radius + 1)) if i not in exclude]
+        if not near:
+            return None
+        with self.reading():
+            widths = Counter(round(self.doc[i].rect.width, 1) for i in near)
+        return widths.most_common(1)[0][0]
+
+    @staticmethod
+    def _pdf_numbers(value):
+        return [float(v) for v in value.strip("[] ").split()]
+
+    def _scale_page(self, index, s, annots=True, widths=True):
+        """Seite um den Faktor s skalieren – Seitengröße, Inhalt (verlustfrei per Transformationsmatrix) und
+        (annots) Anmerkungen: Lage und Geometrie; die Erscheinungsbilder passen sich ihrem Rechteck von selbst an.
+        widths=False: Strichdicke und Schriftgröße bleiben – das Erscheinungsbild wird dann neu erzeugt."""
+        doc = self.doc
+        page = doc[index]
+        xref = page.xref
+        mb = page.mediabox
+        ox, oy = mb.x0, mb.y0  # um die linke untere Ecke skalieren
+
+        def scaled(nums):
+            return [round(ox + (v - ox) * s, 4) if k % 2 == 0 else round(oy + (v - oy) * s, 4)
+                    for k, v in enumerate(nums)]
+
+        def arr(nums):
+            return "[" + " ".join(f"{v:g}" for v in nums) + "]"
+
+        doc.xref_set_key(xref, "MediaBox", arr(scaled([mb.x0, mb.y0, mb.x1, mb.y1])))
+        for key in ("CropBox", "TrimBox", "BleedBox", "ArtBox"):
+            kind, val = doc.xref_get_key(xref, key)
+            if kind == "array":
+                doc.xref_set_key(xref, key, arr(scaled(self._pdf_numbers(val))))
+        # Inhalt: vorn „q s 0 0 s e f cm“, hinten „Q“ (eigene Streams, der bisherige Inhalt bleibt unverändert)
+        streams = []
+        for data in (f"q {s:.6g} 0 0 {s:.6g} {ox - s * ox:.6g} {oy - s * oy:.6g} cm\n".encode(), b"\nQ\n"):
+            nx = doc.get_new_xref()
+            doc.update_object(nx, "<<>>")
+            doc.update_stream(nx, data)
+            streams.append(nx)
+        old = " ".join(f"{c} 0 R" for c in page.get_contents())
+        doc.xref_set_key(xref, "Contents", f"[{streams[0]} 0 R {old} {streams[1]} 0 R]")
+        if annots:
+            self.scale_annots(index, s, widths, (ox, oy))
+
+    def scale_annots(self, index, s, widths=True, origin=None):
+        """Anmerkungen der Seite um den Faktor s skalieren (um origin, Standard: linke untere Ecke der MediaBox):
+        Rechteck und Koordinaten-Listen; widths: auch Strichdicke und Schriftgröße. Ohne widths wird das
+        Erscheinungsbild neu erzeugt (sonst würde es samt Strichdicke in das kleinere Rechteck gezogen)."""
+        doc = self.doc
+        page = doc[index]
+        if origin is None:
+            origin = (page.mediabox.x0, page.mediabox.y0)
+        ox, oy = origin
+
+        def scaled(nums):
+            return [round(ox + (v - ox) * s, 4) if k % 2 == 0 else round(oy + (v - oy) * s, 4)
+                    for k, v in enumerate(nums)]
+
+        def arr(nums):
+            return "[" + " ".join(f"{v:g}" for v in nums) + "]"
+
+        redraw = []
+        for ax, atype, *_ in page.annot_xrefs():
+            for key in ("Rect", "L", "QuadPoints", "Vertices", "CL"):
+                kind, val = doc.xref_get_key(ax, key)
+                if kind == "array":
+                    doc.xref_set_key(ax, key, arr(scaled(self._pdf_numbers(val))))
+            kind, val = doc.xref_get_key(ax, "InkList")
+            if kind == "array":
+                strokes = re.findall(r"\[([^\[\]]*)\]", val)
+                doc.xref_set_key(ax, "InkList", "[" + " ".join(arr(scaled(self._pdf_numbers(st)))
+                                                               for st in strokes) + "]")
+            if widths:
+                # Strichdicke und Schriftgröße mitskalieren – sonst würde ein später neu gezeichnetes Erscheinungsbild
+                # (Anmerkung bearbeitet) wieder dicker bzw. größer als das skalierte
+                kind_w, val = doc.xref_get_key(ax, "BS/W")
+                if kind_w in ("int", "real"):
+                    doc.xref_set_key(ax, "BS/W", f"{float(val) * s:.4g}")
+                kind_d, val = doc.xref_get_key(ax, "DA")
+                if kind_d == "string":
+                    da = re.sub(r"([\d.]+)(\s+Tf)", lambda m: f"{float(m.group(1)) * s:.4g}{m.group(2)}", val)
+                    doc.xref_set_key(ax, "DA", fitz.get_pdf_str(da))
+            elif atype not in (fitz.PDF_ANNOT_STAMP, fitz.PDF_ANNOT_LINK, fitz.PDF_ANNOT_WIDGET,
+                               fitz.PDF_ANNOT_POPUP, fitz.PDF_ANNOT_TEXT, fitz.PDF_ANNOT_SCREEN,
+                               fitz.PDF_ANNOT_FILE_ATTACHMENT):
+                redraw.append(ax)  # Stempel/Bilder, Notiz-Symbole und Medien haben keine Strichdicke
+        for ax in redraw:  # Erscheinungsbild mit unveränderter Strichdicke neu erzeugen
+            a = _load_annot(page, ax)
+            if a is not None:
+                a.update()
 
     def extract_pages(self, indices, path: str):
         out = fitz.open()

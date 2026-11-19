@@ -3294,8 +3294,9 @@ class PageView(QGraphicsView):
         menu.addAction("Seiten einfügen …", lambda: win.insert_pages_dialog(idx + 1))
         menu.addSeparator()
         menu.addAction("Seite duplizieren", lambda: self.document.duplicate_page(idx))
-        menu.addAction("Seite nach links drehen", lambda: self.document.rotate_pages([idx], -90))
-        menu.addAction("Seite nach rechts drehen", lambda: self.document.rotate_pages([idx], 90))
+        menu.addAction("Seite nach links drehen", lambda: win.rotate_pages([idx], -90))
+        menu.addAction("Seite nach rechts drehen", lambda: win.rotate_pages([idx], 90))
+        menu.addAction(win.act_rotate_fit)  # Schalter: danach so breit wie die übrigen Seiten
         menu.addAction("Seite löschen", lambda: win.delete_pages([idx]))
         menu.exec(global_pt)
 

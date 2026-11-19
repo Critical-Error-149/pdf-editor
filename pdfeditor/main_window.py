@@ -575,8 +575,15 @@ class MainWindow(QMainWindow):
         self.act_settings = A("Einstellungen …", self.settings_dialog, "Ctrl+,")
         self.act_dup = A("Seite duplizieren", self._duplicate, "Ctrl+D")
         self.act_del_page = A("Seite(n) löschen", lambda: self.delete_pages(self._target_pages()), "Ctrl+Del")
-        self.act_rot_l = A("Nach links drehen", lambda: self.document.rotate_pages(self._target_pages(), -90), "Ctrl+Shift+L")
-        self.act_rot_r = A("Nach rechts drehen", lambda: self.document.rotate_pages(self._target_pages(), 90), "Ctrl+Shift+R")
+        self.act_rot_l = A("Nach links drehen", lambda: self.rotate_pages(self._target_pages(), -90), "Ctrl+Shift+L")
+        self.act_rot_r = A("Nach rechts drehen", lambda: self.rotate_pages(self._target_pages(), 90), "Ctrl+Shift+R")
+        # Drehen: danach so breit wie die übrigen Seiten? (gemeinsamer Schalter für Menüband und Kontextmenüs)
+        self.act_rotate_fit = QAction(icons.icon("fit_width"), "Breite angleichen", self)
+        self.act_rotate_fit.setCheckable(True)
+        self.act_rotate_fit.setChecked(prefs.rotate_fit_width())
+        self.act_rotate_fit.setToolTip("Gedrehte Seiten auf die Breite der übrigen Seiten skalieren (z. B. ein quer "
+                                       "gedrehtes Foto so breit wie die Textseiten daneben)")
+        self.act_rotate_fit.toggled.connect(prefs.set_rotate_fit_width)
         self.act_move_page = A("Seite verschieben nach …", self.move_page_dialog)
         self.act_extract = A("Seiten als PDF exportieren …", lambda: self.extract_pages(self._target_pages()))
 
@@ -858,6 +865,7 @@ class MainWindow(QMainWindow):
             g.add_action(a)
         g.add_action(self.act_rot_l, always_compact=True)  # Symbole sind eindeutig, spart Platz
         g.add_action(self.act_rot_r, always_compact=True)
+        g.add_action(self.act_rotate_fit, always_compact=True)
         g.add_action(self.act_del_page)
         g = p_pages.add_group("Exportieren")
         for a in (self.act_extract, self.act_export_img, self.act_print):
@@ -1849,6 +1857,24 @@ class MainWindow(QMainWindow):
     def _target_pages(self):
         pages = self.thumbs.selected_pages() if self.thumbs.hasFocus() else []
         return pages or [self.view.current_page()]
+
+    def rotate_pages(self, pages, degrees):
+        """Seiten drehen – mit „Breite angleichen“, wenn eingeschaltet (Menüband, Kontextmenüs, Tastenkürzel).
+        Wird dabei eine Seite mit Zeichnungen skaliert, vorher fragen: Zeichnungen und Strichdicke mitskalieren?"""
+        fit = prefs.rotate_fit_width()
+        annots = widths = True
+        if fit:
+            doc = self.document
+            factors = [f for i in pages if doc.has_drawings(i) and (f := doc.rotation_fit_factor(i, degrees, pages))]
+            if factors:
+                from . import scale_dialog
+                what = "Die Seite wird" if len(pages) == 1 else "Die Seiten werden"
+                choice = scale_dialog.ask(self, f"{what} nach dem Drehen auf die Breite der übrigen Seiten skaliert "
+                                                f"(auf {factors[0] * 100:.0f} %). Darauf sind Zeichnungen.")
+                if choice is None:
+                    return
+                annots, widths = choice
+        self.document.rotate_pages(pages, degrees, fit_width=fit, scale_annots=annots, scale_widths=widths)
 
     def quick_insert(self, index):
         ref = self.document.page(min(max(index - 1, 0), self.document.page_count - 1))
