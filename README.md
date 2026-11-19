@@ -105,6 +105,9 @@ die Grafikkarte nach einigen Sekunden erneut (höchstens zweimal, jeweils mit Pr
   Zoomen offen und wandert mit; Tippen/Klicken daneben schließt sie (abschaltbar unter Einstellungen → Bedienung)
 - Ausgewählte Objekte (z. B. per Rechtsklick/langem Drücken) lassen sich in jedem Werkzeug direkt mit Maus oder
   Stift verschieben und an den Ecken vergrößern
+- Beim Start öffnet sich die zuletzt geöffnete PDF (abschaltbar unter Einstellungen → Darstellung → Beim
+  Programmstart). Das Fenster ist dabei sofort bedienbar: ob die Datei noch da ist, prüft ein Hintergrund-Thread;
+  wer vorher selbst eine Datei öffnet, behält sie; geschützte PDFs nur mit gemerktem Passwort (keine Abfrage)
 - Beim Start geöffneter Menütab und Seitenleiste wählbar (Einstellungen → Beim Programmstart; Standard: wie zuletzt)
 - Zoomen (Knöpfe, Seitenbreite, Strg+Mausrad) behält die sichtbare Stelle; „Ganze Seite“ zeigt die Seite in der
   Bildmitte vollständig

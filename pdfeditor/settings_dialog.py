@@ -28,6 +28,11 @@ def start_panels(qs):
             qs.value("thumbs_visible", "true") in (True, "true"))
 
 
+def open_last_enabled(qs):
+    """Beim Programmstart die zuletzt geöffnete PDF öffnen? (Standard: ja)"""
+    return str(qs.value("start/open_last", "true")).lower() in ("true", "1")
+
+
 def scan_batch_enabled(qs):
     return qs.value("scan_batch", "true") in (True, "true")
 
@@ -151,6 +156,9 @@ class SettingsDialog(QDialog):
             self.start_panel.addItem(v, k)
         self.start_panel.setCurrentIndex(max(0, self.start_panel.findData(str(qs.value("start/sidebar", "last")))))
         f.addRow("Geöffnete Seitenleiste:", self.start_panel)
+        self.open_last = QCheckBox("Zuletzt geöffnete PDF öffnen (statt einer leeren Seite)")
+        self.open_last.setChecked(open_last_enabled(qs))
+        f.addRow(self.open_last)
         pages["Darstellung"].addWidget(box)
 
         # ---- Gemerkte PDF-Passwörter
@@ -271,6 +279,7 @@ class SettingsDialog(QDialog):
         prefs.set_note_close_outside(self.note_close.isChecked())
         qs.setValue("start/ribbon_tab", self.start_tab.currentData())
         qs.setValue("start/sidebar", self.start_panel.currentData())
+        qs.setValue("start/open_last", "true" if self.open_last.isChecked() else "false")
         qs.setValue("image_page/fit", self.fit.currentData())
         qs.setValue("image_page/border", self.border.currentData())
         qs.setValue("image_page/template", self.template.currentText())

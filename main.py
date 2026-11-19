@@ -195,6 +195,9 @@ def main():
     win.show()
     for path in paths:
         win.open_file(path, ask=False)
+    from pdfeditor.settings_dialog import open_last_enabled
+    if not paths and open_last_enabled(win.qs):
+        QTimer.singleShot(100, win.open_last_on_start)  # nach dem ersten Bild: Fenster ist sofort bedienbar
     if server is not None:
         server.files_received.connect(lambda ps: open_from_other_start(win, ps))
     if os.environ.get("PDFEDITOR_SELFTEST"):

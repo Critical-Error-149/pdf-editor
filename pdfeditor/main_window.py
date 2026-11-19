@@ -5,7 +5,7 @@ import os
 import sys
 
 import pymupdf as fitz
-from PySide6.QtCore import QSettings, QSize, Qt, QTimer, QUrl
+from PySide6.QtCore import QSettings, QSize, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import (QAction, QActionGroup, QColor, QDesktopServices, QImage, QKeySequence,
                            QPalette)
 from PySide6.QtWidgets import (QApplication, QFileDialog, QInputDialog, QLabel,
@@ -122,6 +122,7 @@ class ToolSettings:
 
 
 class MainWindow(QMainWindow):
+    _start_file_found = Signal(str)  # Hintergrund-Thread: zuletzt geöffnete Datei existiert (siehe open_last_on_start)
     def __init__(self):
         super().__init__()
         self.qs = QSettings("PDFEditor", "PDFEditor")
@@ -1625,8 +1626,42 @@ class MainWindow(QMainWindow):
             return
         self.statusBar().showMessage(f"Link auf „{target}“ wird aus Sicherheitsgründen nicht geöffnet.", 6000)
 
-    def open_file(self, path, ask=True):
-        """Datei in einem neuen Tab öffnen (bzw. zu ihrem Tab wechseln, falls schon offen)."""
+    def open_last_on_start(self):
+        """Beim Start die zuletzt geöffnete PDF öffnen. Das Fenster ist dabei schon bedienbar: Ob die Datei noch
+        existiert, prüft ein Hintergrund-Thread (auf einem nicht erreichbaren Netzlaufwerk hinge das sonst bis zu
+        20 s); öffnet der Nutzer in der Zwischenzeit selbst etwas, unterbleibt es."""
+        recent = self.qs.value("recent") or []
+        if isinstance(recent, str):
+            recent = [recent]
+        if not recent:
+            return
+        import threading
+        self.statusBar().showMessage("Öffne die zuletzt geöffnete Datei …")
+        self._start_file_found.connect(self._open_start_file, Qt.QueuedConnection)
+
+        def find():
+            found = next((p for p in recent[:5] if os.path.isfile(p)), "")
+            try:
+                self._start_file_found.emit(found)
+            except RuntimeError:
+                pass  # Fenster schon geschlossen
+
+        threading.Thread(target=find, daemon=True).start()
+
+    def _open_start_file(self, path):
+        self._start_file_found.disconnect(self._open_start_file)
+        if not path:
+            self.statusBar().showMessage("Die zuletzt geöffnete Datei ist nicht mehr vorhanden.", 4000)
+            return
+        if self.tab is None or not self.tab.is_pristine() or len(self.editor.tabs()) > 1:
+            self.statusBar().clearMessage()
+            return  # inzwischen selbst etwas geöffnet oder angefangen
+        self.statusBar().clearMessage()  # vorher: open_file kann eigene Hinweise zeigen (z. B. passwortgeschützt)
+        self.open_file(path, ask=False, prompt_password=False)
+
+    def open_file(self, path, ask=True, prompt_password=True):
+        """Datei in einem neuen Tab öffnen (bzw. zu ihrem Tab wechseln, falls schon offen).
+        prompt_password=False (Programmstart): geschützte Datei nur mit gemerktem Passwort öffnen, nicht fragen."""
         existing = self._find_tab(path)
         if existing is not None:
             self.editor.activate(existing)
@@ -1635,9 +1670,12 @@ class MainWindow(QMainWindow):
         try:
             tab.document.open(path)
         except PasswordRequired as e:
-            if not self._unlock(tab, path, e.doc_id):
+            if not self._unlock(tab, path, e.doc_id, prompt=prompt_password):
                 if created:
                     self.close_tab(tab)
+                if not prompt_password:
+                    self.statusBar().showMessage(f"„{os.path.basename(path)}“ ist passwortgeschützt – "
+                                                 "bitte selbst öffnen.", 6000)
                 return
         except Exception as e:
             QMessageBox.critical(self, APP_NAME, f"Datei konnte nicht geöffnet werden:\n{e}")
@@ -1652,7 +1690,7 @@ class MainWindow(QMainWindow):
             self.files.set_current_file(path)
         tab.autosave.refresh()
 
-    def _unlock(self, tab, path, doc_id):
+    def _unlock(self, tab, path, doc_id, prompt=True):
         """Geschützte PDF entsperren: erst ein gemerktes Passwort versuchen, sonst fragen – bei falschem Passwort
         gleich erneut (statt das Dokument zu schließen). False = abgebrochen."""
         from . import passwords
@@ -1666,6 +1704,8 @@ class MainWindow(QMainWindow):
                 self._note_owner_only(tab)
                 return True
             passwords.forget(keys)  # Passwort wurde geändert: veralteten Eintrag entfernen
+        if not prompt:
+            return False
         error = False
         while True:
             pw, remember, ok = PasswordDialog.ask(self, os.path.basename(path), error)
