@@ -531,8 +531,8 @@ class MainWindow(QMainWindow):
         self.act_redo = A("&Wiederholen", lambda: self.document.redo(), QKeySequence.Redo)
         self.act_delete_annot = A("Annotation &löschen", self.delete_current)
         self.act_delete_annot.setEnabled(False)
-        self.act_edit_text = A("Text bearbeiten", lambda: self.view.edit_selected_text())
-        self.act_done = A("Fertig", self.finish_selection)
+        self.act_edit_text = A("✎ Text bearbeiten", lambda: self.view.edit_selected_text())
+        self.act_done = A("✓ Fertig", self.finish_selection)
         self.act_paste = A("&Einfügen", self.paste, QKeySequence.Paste,
                            "Kopierte Objekte, Bild oder Text aus der Zwischenablage einfügen (Strg+V)")
         self.act_copy = A("&Kopieren", self.copy, QKeySequence.Copy, "Auswahl kopieren (Strg+C)")
@@ -587,7 +587,7 @@ class MainWindow(QMainWindow):
         self.act_fit_page = A("Ganze Seite", lambda: self.view.fit("page"), "Ctrl+2")
         self.act_back = A("Zurück", lambda: self.view.go_back(), "Alt+Left",
                           "Zurück zur Stelle vor dem letzten Link (auch Maus-Zurücktaste)")
-        self.act_files = A("Dateien", self._toggle_files, "F3", "Dateileiste ein-/ausblenden (F3)")
+        self.act_files = A("📁 Dateien", self._toggle_files, "F3", "Dateileiste ein-/ausblenden (F3)")
         self.act_files.setCheckable(True)
         start_files, start_thumbs = start_panels(self.qs)
         self.act_files.setChecked(start_files)
@@ -2123,7 +2123,7 @@ class MainWindow(QMainWindow):
                   "Teilen: Ansicht → Tabs → Nebeneinander/Untereinander, oder Rechtsklick auf einen Tab "
                   "(Strg+\\ teilt nebeneinander) · Klick in eine Ansicht macht sie aktiv<br>",
                   "<br><b>Dateien</b><br>",
-                  "Dateien (F3): Ordner durchsuchen, Datei antippen zum Öffnen; 'Zuletzt' zeigt "
+                  "📁 Dateien (F3): Ordner durchsuchen, Datei antippen zum Öffnen; 'Zuletzt' zeigt "
                   "zuletzt geöffnete Dateien<br>",
                   "Automatisch speichern: Datei → Automatisch speichern (für alle Dateien bzw. nur diese Datei)<br>",
                   "<br><b>Finger</b><br>",

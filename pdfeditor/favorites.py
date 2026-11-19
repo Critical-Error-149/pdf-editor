@@ -5,7 +5,6 @@ import json
 import os
 
 from PySide6.QtCore import QPoint, QRect, QSize, Qt, QTimer, Signal
-from . import icons
 from PySide6.QtWidgets import (QDialog, QDialogButtonBox, QHBoxLayout, QInputDialog, QLayout, QListWidget,
                                QPushButton, QToolButton, QVBoxLayout)
 
@@ -99,10 +98,8 @@ class FavoriteButton(QToolButton):
     def __init__(self, fav, parent=None):
         super().__init__(parent)
         self.fav = fav
-        # gezeichnetes Symbol statt Emoji: das erste Emoji lässt Windows eine Ersatzschrift laden (Programmstart)
-        self.setIcon(icons.icon("folder"))
-        self.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-        self.setText(fav["name"])
+        # farbiges Emoji (Wunsch des Nutzers) – kostet beim ersten Zeichnen ~0,2 s, weil Windows eine Ersatzschrift lädt
+        self.setText("📌 " + fav["name"])
         self.setToolTip(fav["path"])
         self.setAutoRaise(True)
         self._timer = QTimer(self)
