@@ -36,7 +36,9 @@ LIZENZEN UND WEITERGABE
   Der PDF Editor ist freie Software unter der GNU Affero General Public License Version 3
   (Datei „LICENSE“). Du darfst ihn kostenlos benutzen, kopieren, an Freunde weitergeben und
   verändern. Bei der Weitergabe bitte immer den ganzen Ordner (bzw. das ganze ZIP) weitergeben –
-  also mit „LICENSE“, „LIZENZEN.txt“, dem Ordner „licenses“ und dem Ordner „Quellcode“.
+  also mit „LICENSE“, „LIZENZEN.txt“ und dem Ordner „licenses“ – und den Quellcode mitgeben
+  („PDF-Editor-Quellcode.zip“) oder auf die Download-Seite verweisen, wo es ihn kostenlos gibt:
+  https://gist.github.com/Critical-Error-149/79b10e874ee6302909641519633e18c5
   Das Programm wird ohne jede Gewährleistung bereitgestellt.
 
   Verwendete Bibliotheken: PyMuPDF/MuPDF (AGPL-3.0), Qt und PySide6 (LGPL-3.0), FFmpeg

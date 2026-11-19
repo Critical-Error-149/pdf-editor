@@ -1626,6 +1626,37 @@ class MainWindow(QMainWindow):
             return
         self.statusBar().showMessage(f"Link auf „{target}“ wird aus Sicherheitsgründen nicht geöffnet.", 6000)
 
+    # ================================================================ Updates
+    def check_updates_on_start(self):
+        """Kurz nach dem Start im Hintergrund nach Updates suchen – nur bei einer neuen Version melden."""
+        from . import updates
+        self._start_check = updates.UpdateCheck(__version__, self)
+        self._start_check.finished.connect(self._start_check_done)
+        self._start_check.start()
+
+    def _start_check_done(self, result, latest, _info):
+        if result == "newer":
+            self.show_update_dialog(latest, self._start_check.data)
+
+    def show_update_dialog(self, latest, data, modal=False):
+        from .update_dialog import UpdateDialog
+        dlg = UpdateDialog(self, latest, data)
+        if modal:
+            dlg.exec()
+        else:  # beim Start: nicht blockieren, man kann weiterarbeiten
+            dlg.setAttribute(Qt.WA_DeleteOnClose)
+            dlg.show()
+
+    def install_update(self, src):
+        """Neue Programmdateien (entpackt in src) installieren: Programm schließen (fragt nach ungespeicherten
+        Änderungen) – erst dann ersetzt das Hilfsskript die Dateien und startet neu (siehe closeEvent)."""
+        self._pending_update = src
+        if not self.close():
+            self._pending_update = None
+            self.statusBar().showMessage("Update abgebrochen – es wird beim nächsten Mal wieder angeboten.", 6000)
+        else:
+            QApplication.quit()
+
     def open_last_on_start(self):
         """Beim Start die zuletzt geöffnete PDF öffnen. Das Fenster ist dabei schon bedienbar: Ob die Datei noch
         existiert, prüft ein Hintergrund-Thread (auf einem nicht erreichbaren Netzlaufwerk hinge das sonst bis zu
@@ -2160,18 +2191,20 @@ class MainWindow(QMainWindow):
         """Über: Version und die Rechtshinweise, die die AGPL für Programme mit Bedienoberfläche verlangt
         (Urheber, Lizenz, keine Gewährleistung, wo der Quellcode liegt)."""
         from PySide6 import __version__ as pyside_version
-        from . import COPYRIGHT, LICENSE_NAME
+        from . import COPYRIGHT, LICENSE_NAME, updates
         box = QMessageBox(self)
         box.setWindowTitle(f"Über {APP_NAME}")
         box.setIcon(QMessageBox.Information)
         box.setTextFormat(Qt.RichText)
+        box.setTextInteractionFlags(Qt.TextBrowserInteraction)  # Link zur Download-Seite (Quellcode) anklickbar
         box.setText(
             f"<b>{APP_NAME}</b> Version {__version__}<br>{COPYRIGHT}<br><br>"
             f"Freie Software unter der {LICENSE_NAME}: Du darfst das Programm benutzen, weitergeben und "
             "verändern – Weitergabe wieder unter dieser Lizenz und mit Quellcode. "
             "<b>Ohne jede Gewährleistung.</b><br><br>"
-            "Der vollständige Quellcode liegt dem Programm im Ordner „Quellcode“ bei; Lizenztexte und "
-            "Hinweise zu den verwendeten Bibliotheken stehen in „LIZENZEN.txt“.<br><br>"
+            f"Der vollständige Quellcode ist kostenlos auf der <a href='{updates.GIST_PAGE}'>Download-Seite</a> "
+            "erhältlich („PDF-Editor-Quellcode.zip“); Lizenztexte und Hinweise zu den verwendeten Bibliotheken "
+            "stehen in „LIZENZEN.txt“.<br><br>"
             f"Python {sys.version.split()[0]} · Qt/PySide6 {pyside_version} (LGPL-3.0) · "
             f"PyMuPDF/MuPDF {fitz.__version__} (AGPL-3.0) · FFmpeg (LGPL-2.1)<br>"
             f"Darstellung: {'Grafikkarte (Direct3D)' if self.view.gpu else 'Software'}")
@@ -2297,3 +2330,7 @@ class MainWindow(QMainWindow):
         for tab in self.editor.tabs():
             tab.view.media.shutdown()
         event.accept()
+        update, self._pending_update = getattr(self, "_pending_update", None), None
+        if update is not None:  # Selbst-Update: Dateien ersetzen, sobald dieser Prozess beendet ist
+            from . import self_update
+            self_update.launch(self_update.write_script(update, self_update.install_dir(), os.getpid()))

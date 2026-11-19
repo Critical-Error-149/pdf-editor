@@ -1,4 +1,5 @@
-"""Baut die portable Version: dist/PDF-Editor-<Version>-portable.zip
+"""Baut die portable Version: dist/PDF-Editor-<Version>-portable.zip (Programm) und
+dist/PDF-Editor-<Version>-quellcode.zip (Quellcode, getrennt – AGPL Abschnitt 6 d: am selben Ort angeboten)
 
 Aufruf (im Projektordner):  python build.py
                              python build.py --release   (zusätzlich auf GitHub veröffentlichen, s. u.)
@@ -7,16 +8,21 @@ Voraussetzung (einmalig):    python -m pip install -r requirements-dev.txt
 Jeder Aufruf erhöht die Versionsnummer (letzte Stelle in pdfeditor/__init__.py).
 
 Ergebnis: ein ZIP mit dem Ordner „PDF Editor“ (darin „PDF Editor.exe“). Zum Weitergeben einfach das ZIP
-verschicken – auf dem Zielrechner wird weder Python noch eine Installation benötigt.
+verschicken – auf dem Zielrechner wird weder Python noch eine Installation benötigt. Den Quellcode gibt es als
+eigenes ZIP (bei Weitergabe mitgeben oder auf die Download-Seite verweisen).
 
 --release: Das ZIP wird als GitHub-Release „v<Version>“ im eigenen Repository veröffentlicht (dort findet es
 „Einstellungen → Nach Updates suchen“). Vorher müssen alle Änderungen committet und gepusht sein; die erhöhte
 Versionsnummer wird automatisch committet und gepusht. Braucht die angemeldete GitHub-Kommandozeile (gh).
 Außerdem bekommt der (geheime) Download-Gist das neue ZIP – für andere ohne Zugang zum privaten Repository.
+Die Einträge unter „Neu“ in CHANGELOG.md werden zum Abschnitt der neuen Version (Pflicht für --release); sie stehen
+in der version.json des Gists und erscheinen im Programm bei einer neuen Version.
 """
 import datetime
+import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -30,8 +36,8 @@ sys.path.insert(0, ROOT)
 from pdfeditor import APP_NAME, __version__  # noqa: E402
 
 # Quellcode, der dem ZIP beiliegt (PyMuPDF steht unter der AGPL: Weitergabe nur mit Quellcode)
-SOURCE_FILES = ["main.py", "build.py", "requirements.txt", "requirements-dev.txt", "README.md",
-                "PDF Editor starten.bat", "LIESMICH.txt", "LICENSE", "LIZENZEN.txt"]
+SOURCE_FILES = ["main.py", "build.py", "requirements.txt", "requirements-dev.txt", "README.md", "CHANGELOG.md",
+                "PDF Editor starten.bat", "Feedback lesen.bat", "LIESMICH.txt", "LICENSE", "LIZENZEN.txt"]
 SOURCE_DIRS = ["pdfeditor", "tools", "licenses"]
 # Liegen neben der .exe (Weitergabe: Lizenz der AGPL/LGPL-Teile muss beiliegen)
 LEGAL_FILES = ["LICENSE", "LIZENZEN.txt"]
@@ -271,9 +277,41 @@ def git(*args):
                           errors="replace")
 
 
+CHANGELOG = os.path.join(ROOT, "CHANGELOG.md")
+
+
+def read_changelog():
+    """[[Version oder „Neu“, Datum, [Einträge]], …] in der Reihenfolge der Datei (neueste oben)."""
+    sections = []
+    with open(CHANGELOG, encoding="utf-8") as f:
+        for line in f:
+            m = re.match(r"^## (\S+)(?: – (.+?))?\s*$", line)
+            if m:
+                sections.append([m.group(1), (m.group(2) or "").strip(), []])
+            elif sections and line.startswith("- "):
+                sections[-1][2].append(line[2:].strip())
+    return sections
+
+
+def pending_changes():
+    return next((s[2] for s in read_changelog() if s[0] == "Neu"), [])
+
+
+def finalize_changelog():
+    """„## Neu“ wird zu „## <Version> – <Datum>“; darüber kommt ein neuer, leerer Abschnitt „Neu“."""
+    today = datetime.date.today().strftime("%d.%m.%Y")
+    with open(CHANGELOG, encoding="utf-8") as f:
+        text = f.read()
+    text = text.replace("## Neu\n", f"## Neu\n\n## {__version__} – {today}\n", 1)
+    with open(CHANGELOG, "w", encoding="utf-8") as f:
+        f.write(text)
+
+
 def check_release_ready():
     """Vor dem Bauen prüfen, ob veröffentlicht werden kann – sonst wäre die Versionsnummer umsonst erhöht."""
     from pdfeditor import updates
+    if not pending_changes():
+        raise SystemExit("--release: In CHANGELOG.md stehen unter „Neu“ keine Änderungen – bitte eintragen.")
     if updates.gh_path() is None:
         raise SystemExit("--release: GitHub-Kommandozeile (gh) nicht gefunden.")
     if git("status", "--porcelain").stdout.strip():
@@ -287,20 +325,22 @@ def check_release_ready():
                          f"{behind} nicht geholt) – erst angleichen.")
 
 
-def publish(zip_path):
-    """Versionsnummer committen und pushen, dann das ZIP als Release „v<Version>“ hochladen."""
+def publish(zip_path, source_zip):
+    """Versionsnummer und Änderungsliste committen und pushen, dann beide ZIPs als Release „v<Version>“ hochladen."""
     from pdfeditor import updates
     tag = f"v{__version__}"
     print(f"== GitHub-Release {tag}")
-    for args in (("commit", "-q", "-m", f"Version {__version__}", "--", "pdfeditor/__init__.py"),
+    changes = pending_changes()
+    finalize_changelog()
+    for args in (("commit", "-q", "-m", f"Version {__version__}", "--", "pdfeditor/__init__.py", "CHANGELOG.md"),
                  ("push", "-q", "origin", "main")):
         r = git(*args)
         if r.returncode != 0:
             raise SystemExit(f"git {args[0]} fehlgeschlagen:\n{r.stderr}")
-    r = subprocess.run([updates.gh_path(), "release", "create", tag, zip_path, "--repo", updates.REPO,
-                        "--target", "main", "--title", f"{APP_NAME} {__version__}",
-                        "--notes", f"Portable Version {__version__}: ZIP entpacken und „PDF Editor.exe“ starten "
-                                   "(vorher den alten Ordner „PDF Editor“ ersetzen)."],
+    notes = ("\n".join(f"- {c}" for c in changes) + "\n\nPortable Version: ZIP entpacken und „PDF Editor.exe“ starten "
+             "(vorher den alten Ordner „PDF Editor“ ersetzen). Der Quellcode liegt als eigenes ZIP bei.")
+    r = subprocess.run([updates.gh_path(), "release", "create", tag, zip_path, source_zip, "--repo", updates.REPO,
+                        "--target", "main", "--title", f"{APP_NAME} {__version__}", "--notes", notes],
                        cwd=ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace")
     if r.returncode != 0:
         raise SystemExit(f"Release fehlgeschlagen:\n{r.stderr}")
@@ -310,19 +350,35 @@ def publish(zip_path):
 # Geheimer Gist zum Weitergeben: nicht auffindbar, aber jeder mit dem Link kann herunterladen. Das ZIP liegt dort
 # unter festem Namen – der Download-Link bleibt bei jeder Version gleich und liefert immer die neueste.
 # (Adressen stehen in pdfeditor/updates.py – „Nach Updates suchen“ liest die version.json aus dem Gist)
-from pdfeditor.updates import GIST_DOWNLOAD, GIST_ID, GIST_PAGE, GIST_ZIP  # noqa: E402
+from pdfeditor.updates import (GIST_DOWNLOAD, GIST_ID, GIST_PAGE, GIST_SOURCE, GIST_SOURCE_ZIP,  # noqa: E402
+                               GIST_ZIP)
 
 
-def update_gist(zip_path):
+def sha256(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for block in iter(lambda: f.read(1 << 20), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
+def update_gist(zip_path, source_zip):
     """Download-Gist auf diese Version setzen. Ein Gist ist ein Git-Repository; das ZIP (binär) geht nur per git push
-    hinein. Jeder Stand ersetzt den vorigen ganz (ohne Verlauf), sonst wüchse der Gist mit jeder Version um ~55 MB."""
+    hinein. Jeder Stand ersetzt den vorigen ganz (ohne Verlauf), sonst wüchse der Gist mit jeder Version um ~55 MB.
+    version.json: Version, Prüfsumme/Größe fürs Selbst-Update und die Änderungsliste (Anzeige im Programm)."""
     work = os.path.join(BUILD, "gist")
     remove_tree(work)
     os.makedirs(work)
     shutil.copy2(zip_path, os.path.join(work, GIST_ZIP))
+    shutil.copy2(source_zip, os.path.join(work, GIST_SOURCE_ZIP))
+    shutil.copy2(CHANGELOG, os.path.join(work, "CHANGELOG.md"))
+    changelog = [{"version": v, "date": d, "changes": c} for v, d, c in read_changelog() if v != "Neu"][:20]
     with open(os.path.join(work, "version.json"), "w", encoding="utf-8") as f:  # für „Nach Updates suchen“
         json.dump({"version": __version__, "date": datetime.date.today().isoformat(),
-                   "download": GIST_DOWNLOAD, "page": GIST_PAGE}, f, indent=2)
+                   "download": GIST_DOWNLOAD, "page": GIST_PAGE, "source": GIST_SOURCE,
+                   "sha256": sha256(zip_path), "size": os.path.getsize(zip_path),
+                   "changelog": changelog}, f, ensure_ascii=False, indent=2)
+    news = next((c for v, _d, c in read_changelog() if v == __version__), [])
     size = os.path.getsize(zip_path) / 1024 / 1024
     today = datetime.date.today().strftime("%d.%m.%Y")
     with open(os.path.join(work, "PDF Editor – Download.md"), "w", encoding="utf-8") as f:
@@ -336,12 +392,21 @@ def update_gist(zip_path):
 2. Entpacken, z. B. auf den Desktop
 3. Im Ordner „PDF Editor“ die Datei **PDF Editor.exe** starten – keine Installation, kein Python nötig
 
-Neue Version: den alten Ordner „PDF Editor“ durch den neuen ersetzen; Einstellungen bleiben erhalten.
+Neue Version: im Programm „Einstellungen → Updates & Feedback → Nach Updates suchen“ → „Jetzt aktualisieren“ –
+oder den alten Ordner „PDF Editor“ durch den neuen ersetzen. Einstellungen bleiben erhalten.
 
 Windows warnt evtl. („Der Computer wurde durch Windows geschützt“), weil das Programm nicht signiert ist:
 „Weitere Informationen“ → „Trotzdem ausführen“.
 
-Lizenz: GNU AGPL-3.0-or-later (Quellcode und Lizenztexte liegen im ZIP).
+## Neu in Version {__version__}
+
+""" + "".join(f"- {c}\n" for c in news) + f"""
+Alle Änderungen: CHANGELOG.md (unten auf dieser Seite).
+
+## Quellcode
+
+Der PDF Editor ist freie Software (GNU AGPL-3.0-or-later). Der vollständige Quellcode dieser Version liegt kostenlos
+hier: [PDF-Editor-Quellcode.zip]({GIST_SOURCE}). Lizenztexte liegen dem Programm bei.
 """)
 
     def run(*args):
@@ -390,7 +455,7 @@ def main():
     for f in LEGAL_FILES:
         shutil.copy2(os.path.join(ROOT, f), app_dir)
     shutil.copytree(os.path.join(ROOT, LEGAL_DIR), os.path.join(app_dir, LEGAL_DIR), dirs_exist_ok=True)
-    copy_source(os.path.join(app_dir, "Quellcode"))
+    remove_tree(os.path.join(app_dir, "Quellcode"))  # Quellcode jetzt als eigenes ZIP (s. u.)
     zip_path = os.path.join(DIST, f"PDF-Editor-{__version__}-portable.zip")
     print(f"== ZIP: {zip_path}")
     if os.path.exists(zip_path):
@@ -401,12 +466,31 @@ def main():
                 full = os.path.join(folder, name)
                 # im ZIP liegt alles im Ordner „PDF Editor“ (gleicher Name bei jeder Version -> Update = ersetzen)
                 z.write(full, os.path.join(APP_NAME, os.path.relpath(full, app_dir)))
+    source_zip = make_source_zip()
     size = os.path.getsize(zip_path) / 1024 / 1024
-    print(f"\nFertig: {zip_path} ({size:.0f} MB)")
+    print(f"\nFertig: {zip_path} ({size:.0f} MB)\n       {source_zip} "
+          f"({os.path.getsize(source_zip) / 1024 / 1024:.1f} MB)")
     print(f"Zum Testen ohne Entpacken: {os.path.join(app_dir, APP_NAME + '.exe')}")
     if release:
-        publish(zip_path)
-        update_gist(zip_path)
+        publish(zip_path, source_zip)
+        update_gist(zip_path, source_zip)
+
+
+def make_source_zip():
+    """Quellcode dieser Version als eigenes ZIP (Ordner „PDF Editor Quellcode“), ohne das Feedback-Token."""
+    src = os.path.join(BUILD, "quellcode", "PDF Editor Quellcode")
+    remove_tree(os.path.dirname(src))
+    copy_source(src)
+    path = os.path.join(DIST, f"PDF-Editor-{__version__}-quellcode.zip")
+    if os.path.exists(path):
+        os.remove(path)
+    base = os.path.dirname(src)
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as z:
+        for folder, _, files in os.walk(src):
+            for name in files:
+                full = os.path.join(folder, name)
+                z.write(full, os.path.relpath(full, base))
+    return path
 
 
 if __name__ == "__main__":

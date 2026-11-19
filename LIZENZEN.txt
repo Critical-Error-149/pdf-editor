@@ -18,8 +18,8 @@ Kurz auf Deutsch (rechtlich gilt der englische Lizenztext in LICENSE):
   Der PDF Editor ist freie Software. Du darfst ihn kostenlos benutzen, kopieren, an andere
   weitergeben und verändern – auch verändert weitergeben –, solange die Weitergabe wieder unter
   der GNU AGPL Version 3 geschieht, diese Hinweise und Lizenztexte beiliegen und der Empfänger
-  den Quellcode bekommt (er liegt im Ordner „Quellcode“ bei). Das Programm wird ohne jede
-  Gewährleistung bereitgestellt.
+  den Quellcode bekommt (kostenlos als „PDF-Editor-Quellcode.zip“ auf der Download-Seite, siehe
+  „Quellcode“ unten). Das Programm wird ohne jede Gewährleistung bereitgestellt.
 
 
 Enthaltene Komponenten
@@ -63,8 +63,13 @@ gezeichnet).
 Quellcode
 ---------
 
-PDF Editor: vollständig im Ordner „Quellcode“ (einschließlich build.py, mit dem diese .exe gebaut
-wurde, und tools/). Bauen: Python 3.14 installieren, dann im Ordner „Quellcode“
+PDF Editor: Der vollständige Quellcode dieser Version (einschließlich build.py, mit dem diese .exe
+gebaut wurde, und tools/) liegt kostenlos als „PDF-Editor-Quellcode.zip“ auf derselben Download-Seite
+wie das Programm:
+  https://gist.github.com/Critical-Error-149/79b10e874ee6302909641519633e18c5
+(GNU AGPL Version 3, Abschnitt 6 d: Programm und Quellcode werden am selben Ort angeboten.) Wer eine
+ältere Version hat, deren Quellcode dort nicht mehr liegt, bekommt ihn auf Anfrage über
+„Datei → Feedback senden“. Bauen: Python 3.14 installieren, dann im entpackten Quellcode-Ordner
   python -m pip install -r requirements.txt pyinstaller
   python build.py
 

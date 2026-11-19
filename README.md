@@ -36,12 +36,23 @@ die Versionsnummer automatisch (letzte Stelle von `__version__` in `pdfeditor/__
 weitergegebene ZIP eine eigene Nummer. Empfänger ersetzen den alten Ordner durch den neuen; Einstellungen
 bleiben erhalten (Registrierung).
 
-Auf GitHub veröffentlichen: `python build.py --release` baut wie oben und lädt das ZIP als Release `v<Version>`
-ins Repository (`gh` muss angemeldet sein; vorher alles committen und pushen – die neue Versionsnummer committet
-und pusht das Skript selbst) und aktualisiert den Download-Gist (ZIP + `version.json`). „Einstellungen → Updates →
-Nach Updates suchen“ liest `version.json` aus dem Gist – ohne Anmeldung, funktioniert also auch bei anderen – und
-öffnet bei einer neueren Version die Download-Seite. Für HTTPS behält der Build nur die Windows-eigene
-TLS-Erweiterung von Qt (Schannel); OpenSSL ist nicht enthalten.
+Auf GitHub veröffentlichen: Änderungen unter „Neu“ in `CHANGELOG.md` eintragen (Pflicht), dann
+`python build.py --release`. Das baut wie oben, macht aus „Neu“ den Abschnitt der neuen Version, committet und pusht
+Versionsnummer und Änderungsliste, lädt Programm- und Quellcode-ZIP als Release `v<Version>` ins Repository und
+aktualisiert den Download-Gist (beide ZIPs, `CHANGELOG.md`, `version.json` mit Prüfsumme und Änderungsliste;
+`gh` muss angemeldet sein).
+
+Updates im Programm: Kurz nach dem Start prüft das Programm im Hintergrund `version.json` im Gist (abschaltbar unter
+Einstellungen → Updates & Feedback; dort auch „Nach Updates suchen“) – ohne Anmeldung, also auch bei anderen. Bei
+einer neuen Version zeigt ein Fenster die Änderungen; „Jetzt aktualisieren“ lädt das Programm-ZIP, prüft die
+Prüfsumme (SHA-256), entpackt es und schließt das Programm (ungespeicherte Änderungen werden abgefragt). Ein kleines
+PowerShell-Skript (`pdfeditor/self_update.py`) ersetzt dann die Programmdateien – die alten werden vorher zur Seite
+gelegt und bei einem Fehler wiederhergestellt – und startet die neue Version. Das funktioniert ohne Installation,
+solange der Programmordner beschreibbar ist (sonst: „Download-Seite öffnen“). Für HTTPS behält der Build nur die
+Windows-eigene TLS-Erweiterung von Qt (Schannel); OpenSSL ist nicht enthalten.
+
+Quellcode: liegt nicht mehr im Programm-ZIP, sondern als eigenes ZIP am selben Ort (GNU AGPL Abschnitt 6 d) – im
+Gist („PDF-Editor-Quellcode.zip“) und im Release. LIZENZEN.txt, LIESMICH.txt und „Über“ nennen den Ort.
 
 Fehler der .exe landen in `%LOCALAPPDATA%\PDF Editor\fehler.log` bzw. `absturz.log`; reagiert das Programm
 20 s lang nicht, stehen die Aufrufstapel aller Threads in `haenger.log`. Bei harten Abstürzen schreibt das Programm

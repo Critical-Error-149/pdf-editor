@@ -195,9 +195,11 @@ def main():
     win.show()
     for path in paths:
         win.open_file(path, ask=False)
-    from pdfeditor.settings_dialog import open_last_enabled
+    from pdfeditor.settings_dialog import auto_update_enabled, open_last_enabled
     if not paths and open_last_enabled(win.qs):
         QTimer.singleShot(100, win.open_last_on_start)  # nach dem ersten Bild: Fenster ist sofort bedienbar
+    if auto_update_enabled(win.qs) and not os.environ.get("PDFEDITOR_SELFTEST"):
+        QTimer.singleShot(3000, win.check_updates_on_start)  # im Hintergrund, meldet sich nur bei neuer Version
     if server is not None:
         server.files_received.connect(lambda ps: open_from_other_start(win, ps))
     if os.environ.get("PDFEDITOR_SELFTEST"):

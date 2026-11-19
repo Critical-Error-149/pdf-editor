@@ -28,6 +28,11 @@ def start_panels(qs):
             qs.value("thumbs_visible", "true") in (True, "true"))
 
 
+def auto_update_enabled(qs):
+    """Beim Programmstart automatisch nach Updates suchen? (Standard: ja)"""
+    return str(qs.value("updates/auto", "true")).lower() in ("true", "1")
+
+
 def open_last_enabled(qs):
     """Beim Programmstart die zuletzt geöffnete PDF öffnen? (Standard: ja)"""
     return str(qs.value("start/open_last", "true")).lower() in ("true", "1")
@@ -51,7 +56,7 @@ class SettingsDialog(QDialog):
         for name in ("Darstellung", "Bedienung", "Dokumente", "Updates & Feedback"):
             page = QWidget()
             pages[name] = QVBoxLayout(page)
-            self.tabs.addTab(page, name)
+            self.tabs.addTab(page, name.replace("&", "&&"))  # „&“ sonst als Tastenkürzel-Markierung gelesen
         lay.addWidget(self.tabs)
 
         # ---- Darstellung
@@ -175,7 +180,7 @@ class SettingsDialog(QDialog):
 
         # ---- Updates (über den Download-Gist: ohne Anmeldung, auch bei anderen)
         box = QGroupBox("Updates")
-        row = QHBoxLayout(box)
+        row = QHBoxLayout()
         self.update_label = QLabel(f"Installierte Version: {__version__}")
         self.update_label.setWordWrap(True)
         row.addWidget(self.update_label, 1)
@@ -184,6 +189,12 @@ class SettingsDialog(QDialog):
                                    "heruntergeladen wird im Browser")
         self.update_btn.clicked.connect(self._check_updates)
         row.addWidget(self.update_btn)
+        outer = QVBoxLayout()
+        outer.addLayout(row)
+        self.auto_update = QCheckBox("Beim Programmstart automatisch nach Updates suchen")
+        self.auto_update.setChecked(auto_update_enabled(qs))
+        outer.addWidget(self.auto_update)
+        box.setLayout(outer)
         pages["Updates & Feedback"].addWidget(box)
 
         # ---- Feedback (verschlüsselt an den Entwickler, siehe feedback.py)
@@ -258,6 +269,10 @@ class SettingsDialog(QDialog):
         self.update_label.setText(texts[result])
         if result == "current":
             return
+        if result == "newer" and hasattr(self.parent(), "show_update_dialog"):
+            # Änderungen anzeigen und „Jetzt aktualisieren“ anbieten
+            self.parent().show_update_dialog(latest, self._update_check.data, modal=True)
+            return
         url = info if result in ("newer", "none") else updates.GIST_PAGE
         ask = {"newer": "Die Download-Seite im Browser öffnen? Dort das ZIP herunterladen und den alten Ordner "
                         "„PDF Editor“ durch den neuen ersetzen (Einstellungen bleiben erhalten).",
@@ -280,6 +295,7 @@ class SettingsDialog(QDialog):
         qs.setValue("start/ribbon_tab", self.start_tab.currentData())
         qs.setValue("start/sidebar", self.start_panel.currentData())
         qs.setValue("start/open_last", "true" if self.open_last.isChecked() else "false")
+        qs.setValue("updates/auto", "true" if self.auto_update.isChecked() else "false")
         qs.setValue("image_page/fit", self.fit.currentData())
         qs.setValue("image_page/border", self.border.currentData())
         qs.setValue("image_page/template", self.template.currentText())
