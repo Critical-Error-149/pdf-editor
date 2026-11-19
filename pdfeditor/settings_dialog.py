@@ -1,13 +1,11 @@
 """Einstellungen (Datei → Einstellungen …): Darstellung, Bildseiten, automatisches Speichern."""
 from __future__ import annotations
 
-import time
-
 from PySide6.QtCore import Qt, QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFormLayout, QGroupBox,
                                QHBoxLayout, QLabel, QMessageBox, QPushButton, QSlider, QSpinBox, QTabWidget,
-                               QVBoxLayout, QWidget, QApplication)
+                               QVBoxLayout, QWidget)
 
 from . import __version__, gestures, passwords, prefs, touch_scroll, updates
 from .document import PAGE_TEMPLATES
@@ -243,15 +241,9 @@ class SettingsDialog(QDialog):
         self._update_pw_label()
 
     def _feedback(self):
-        # Einstellungen kurz ausblenden: das Fensterbild für das Feedback soll das Programm zeigen, nicht diesen Dialog
-        self.hide()
-        end = time.monotonic() + 0.25
-        while time.monotonic() < end:
-            QApplication.processEvents()
-        try:
-            self.parent().send_feedback()
-        finally:
-            self.show()
+        # NICHT ausblenden: hide() beendet die exec()-Schleife dieses Dialogs – danach blieb das Hauptfenster gesperrt,
+        # ohne dass ein Dialog zu sehen war. Das Fensterbild rendert das Hauptfenster selbst (ohne diesen Dialog).
+        self.parent().send_feedback()
 
     def _check_updates(self):
         self.update_btn.setEnabled(False)

@@ -188,12 +188,10 @@ def image_jpeg(img, name):
 
 
 def window_screenshot(window):
-    """Bild des Programmfensters, wie es auf dem Bildschirm zu sehen ist (inkl. Grafikkarten-Ansicht)."""
-    screen = window.screen()
-    if screen is None:
-        return None
-    pm = screen.grabWindow(window.winId())
-    return pm.toImage() if not pm.isNull() else None
+    """Bild des Programmfensters (inkl. Grafikkarten-Ansicht). Das Fenster wird selbst gerendert statt den Bildschirm
+    abzufotografieren – darüberliegende Dialoge (z. B. die Einstellungen) sind so nicht mit drauf."""
+    img = window.grab().toImage()
+    return img if not img.isNull() else None
 
 
 def build_payload(message, name="", system=None, log=None, images=()):
