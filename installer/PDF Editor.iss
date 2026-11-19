@@ -159,6 +159,13 @@ begin
   RemoveDir(Dir);   // klappt nur, wenn er jetzt leer ist
 end;
 
+procedure InitializeWizard();
+begin
+  // Aufgabenliste: Inno lässt links neben den Kästchen zu wenig Platz – bei hoher Skalierung (z. B. 200 % auf dem
+  // Surface) waren die Häkchen zur Hälfte abgeschnitten. Mit DPI-skaliertem Abstand werden sie vollständig gezeichnet.
+  WizardForm.TasksList.Offset := ScaleX(8);
+end;
+
 function InitializeUninstall(): Boolean;
 begin
   Result := True;

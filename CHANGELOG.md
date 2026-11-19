@@ -4,6 +4,7 @@ Neue Einträge kommen unter „Neu“ (eine Zeile je Änderung, beginnend mit �
 daraus den Abschnitt der neuen Version; das Programm zeigt ihn bei „Nach Updates suchen“ an.
 
 ## Neu
+- Installationsprogramm: Häkchen der zusätzlichen Aufgaben waren bei hoher Bildschirmskalierung halb abgeschnitten
 
 ## 0.2.8 – 19.11.2026
 - Automatische Suche nach Updates beim Programmstart (abschaltbar unter Einstellungen → Updates & Feedback); bei einer neuen Version werden die Änderungen angezeigt
