@@ -4,14 +4,15 @@ Windows-PDF-Editor auf Basis von **PySide6 (Qt)** und **PyMuPDF**.
 
 ## ⬇️ [Neueste Version herunterladen](https://github.com/Critical-Error-149/pdf-editor/releases/latest)
 
-Dort unter „Assets“ entweder `PDF-Editor-<Version>-Setup.exe` (Installation ohne Administratorrechte, mit
-Startmenü-Eintrag und „Öffnen mit“ für PDFs) oder `PDF-Editor-<Version>-portable.zip` (entpacken und
-`PDF Editor.exe` starten) laden – kein Python nötig. Ältere Versionen: [alle Releases](https://github.com/Critical-Error-149/pdf-editor/releases).
+Dort unter „Assets“ entweder `PDF-Editor-Setup.exe` (Installation ohne Administratorrechte, mit
+Startmenü-Eintrag und „Öffnen mit“ für PDFs) oder `PDF-Editor-portable.zip` (entpacken und `PDF Editor.exe`
+starten) laden – kein Python nötig. Ältere Versionen: [alle Releases](https://github.com/Critical-Error-149/pdf-editor/releases).
 
-**Zum Weitergeben an andere** (ohne Zugang zu diesem privaten Repository):
-[Download-Gist](https://gist.github.com/Critical-Error-149/79b10e874ee6302909641519633e18c5) – Anleitung und
-direkter Link, der immer die neueste Version lädt. Der Gist ist geheim (nicht auffindbar), aber jeder mit dem Link
-kann herunterladen; `python build.py --release` aktualisiert ihn automatisch.
+Direkte Links, die immer die neueste Version laden (zum Weitergeben):
+[Setup](https://github.com/Critical-Error-149/pdf-editor/releases/latest/download/PDF-Editor-Setup.exe) ·
+[portable ZIP](https://github.com/Critical-Error-149/pdf-editor/releases/latest/download/PDF-Editor-portable.zip) ·
+[Quellcode](https://github.com/Critical-Error-149/pdf-editor/releases/latest/download/PDF-Editor-Quellcode.zip).
+Der frühere Download-Gist verweist nur noch hierher (und hält für Versionen bis 0.2.8 die Update-Information bereit).
 
 ## Starten
 
@@ -51,11 +52,14 @@ bleiben erhalten (Registrierung).
 
 Auf GitHub veröffentlichen: Änderungen unter „Neu“ in `CHANGELOG.md` eintragen (Pflicht), dann
 `python build.py --release`. Das baut wie oben, macht aus „Neu“ den Abschnitt der neuen Version, committet und pusht
-Versionsnummer und Änderungsliste, lädt Setup, Programm- und Quellcode-ZIP als Release `v<Version>` ins Repository
-und aktualisiert den Download-Gist (Setup, beide ZIPs, `CHANGELOG.md`, `version.json` mit Prüfsummen und
-Änderungsliste; `gh` muss angemeldet sein, Inno Setup installiert).
+Versionsnummer und Änderungsliste und legt das Release `v<Version>` an: Setup, Programm- und Quellcode-ZIP (feste
+Dateinamen, damit `…/releases/latest/download/<Datei>` immer die neueste Version liefert) und `version.json`
+(Version, Links auf genau diese Dateien, Prüfsummen, Größen, Änderungsliste). Der frühere Download-Gist bekommt nur
+noch einen Verweis und – als Brücke für Versionen bis 0.2.8 – dieselbe `version.json` (`gh` muss angemeldet sein,
+Inno Setup installiert).
 
-Updates im Programm: Kurz nach dem Start prüft das Programm im Hintergrund `version.json` im Gist (abschaltbar unter
+Updates im Programm: Kurz nach dem Start prüft das Programm im Hintergrund `version.json` des neuesten Releases
+(abschaltbar unter
 Einstellungen → Updates & Feedback; dort auch „Nach Updates suchen“) – ohne Anmeldung, also auch bei anderen. Bei
 einer neuen Version zeigt ein Fenster die Änderungen („Diese Version überspringen“: beim Start erst wieder bei der
 nächsten Version melden – Einstellung `updates/skipped`; „Nach Updates suchen“ zeigt sie weiter, mit „Wieder
@@ -69,8 +73,9 @@ auch Versionsangabe und Deinstallation. Bietet `version.json` noch kein Setup an
 portable Version. Für HTTPS behält der Build nur die
 Windows-eigene TLS-Erweiterung von Qt (Schannel); OpenSSL ist nicht enthalten.
 
-Quellcode: liegt nicht mehr im Programm-ZIP, sondern als eigenes ZIP am selben Ort (GNU AGPL Abschnitt 6 d) – im
-Gist („PDF-Editor-Quellcode.zip“) und im Release. LIZENZEN.txt, LIESMICH.txt und „Über“ nennen den Ort.
+Quellcode: liegt nicht im Programm-ZIP, sondern als eigenes ZIP am selben Ort (GNU AGPL Abschnitt 6 d) – in jedem
+Release („PDF-Editor-Quellcode.zip“); dazu ist das Repository öffentlich. LIZENZEN.txt, LIESMICH.txt und „Über“
+nennen den Ort.
 
 Fehler der .exe landen in `%LOCALAPPDATA%\PDF Editor\fehler.log` bzw. `absturz.log`; reagiert das Programm
 20 s lang nicht, stehen die Aufrufstapel aller Threads in `haenger.log`. Bei harten Abstürzen schreibt das Programm

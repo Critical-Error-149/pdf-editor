@@ -271,7 +271,7 @@ class SettingsDialog(QDialog):
             # Änderungen anzeigen und „Jetzt aktualisieren“ anbieten
             self.parent().show_update_dialog(latest, self._update_check.data, modal=True)
             return
-        url = info if result in ("newer", "none") else updates.GIST_PAGE
+        url = info if result in ("newer", "none") else updates.DOWNLOAD_PAGE
         ask = {"newer": "Die Download-Seite im Browser öffnen? Dort das ZIP herunterladen und den alten Ordner "
                         "„PDF Editor“ durch den neuen ersetzen (Einstellungen bleiben erhalten).",
                "none": "Die Download-Seite trotzdem im Browser öffnen?",

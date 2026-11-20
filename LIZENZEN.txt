@@ -66,10 +66,11 @@ Quellcode
 PDF Editor: Der vollständige Quellcode dieser Version (einschließlich build.py, mit dem diese .exe
 gebaut wurde, und tools/) liegt kostenlos als „PDF-Editor-Quellcode.zip“ auf derselben Download-Seite
 wie das Programm:
-  https://gist.github.com/Critical-Error-149/79b10e874ee6302909641519633e18c5
-(GNU AGPL Version 3, Abschnitt 6 d: Programm und Quellcode werden am selben Ort angeboten.) Wer eine
-ältere Version hat, deren Quellcode dort nicht mehr liegt, bekommt ihn auf Anfrage über
-„Datei → Feedback senden“. Bauen: Python 3.14 installieren, dann im entpackten Quellcode-Ordner
+  https://github.com/Critical-Error-149/pdf-editor/releases
+(GNU AGPL Version 3, Abschnitt 6 d: Programm und Quellcode werden am selben Ort angeboten.) Jede Version
+hat dort ihr eigenes Release mit Quellcode; der gesamte Entwicklungsstand liegt im öffentlichen
+Repository https://github.com/Critical-Error-149/pdf-editor. Bauen: Python 3.14 installieren, dann im
+entpackten Quellcode-Ordner
   python -m pip install -r requirements.txt pyinstaller
   python build.py
 

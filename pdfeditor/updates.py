@@ -1,12 +1,13 @@
-"""Nach Updates suchen – über den (geheimen) Download-Gist, also ohne Anmeldung und auch bei anderen.
+"""Nach Updates suchen – über die Releases des öffentlichen GitHub-Repositorys, also ohne Anmeldung.
 
-build.py --release legt bei jeder Veröffentlichung das ZIP (fester Name, der Download-Link bleibt gleich) und eine
-kleine version.json in den Gist. Die Prüfung liest nur version.json (QtNetwork mit der Windows-eigenen
-Verschlüsselung „Schannel“ – OpenSSL ist in der .exe nicht enthalten) und vergleicht die Versionsnummern; heruntergeladen
-wird im Browser über die Gist-Seite mit Anleitung.
+build.py --release legt jede Version als Release „v<Version>“ an: Setup, portables ZIP, Quellcode-ZIP und eine kleine
+version.json, alle mit festem Namen. So zeigt „…/releases/latest/download/<Datei>“ immer auf die neueste Version
+(Download-Links zum Weitergeben, VERSION_URL). Die Prüfung liest nur version.json (QtNetwork mit der Windows-eigenen
+Verschlüsselung „Schannel“ – OpenSSL ist in der .exe nicht enthalten; GitHubs Weiterleitungen folgt Qt von selbst) und
+vergleicht die Versionsnummern; die Links in version.json zeigen auf genau diese Version (passend zur Prüfsumme).
 
-Die GitHub-Releases im privaten Repository (REPO) bleiben das Archiv aller Versionen; build.py veröffentlicht dort
-mit der GitHub-Kommandozeile (gh_path).
+Brücke für alte Versionen: Bis 0.2.8 lag alles im Download-Gist (GIST_*); diese Versionen lesen ihre version.json
+weiterhin dort. build.py schreibt deshalb auch die Gist-version.json – sie verweist auf die Dateien im Release.
 """
 from __future__ import annotations
 
@@ -19,20 +20,31 @@ import time
 from PySide6.QtCore import QObject, QUrl, Signal
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
 
-REPO = "Critical-Error-149/pdf-editor"
+REPO = "Critical-Error-149/pdf-editor"   # öffentlich
 RELEASES_URL = f"https://github.com/{REPO}/releases"
+DOWNLOAD_PAGE = f"{RELEASES_URL}/latest"  # Download-Seite der neuesten Version (zum Weitergeben)
 
+# Release-Dateien (fester Name in jedem Release)
+SETUP_EXE = "PDF-Editor-Setup.exe"         # Installationsprogramm (Inno Setup)
+PORTABLE_ZIP = "PDF-Editor-portable.zip"   # portable Version
+SOURCE_ZIP = "PDF-Editor-Quellcode.zip"    # Quellcode getrennt (AGPL 6 d: am selben Ort wie das Programm)
+VERSION_JSON = "version.json"
+LATEST = f"{RELEASES_URL}/latest/download"  # + Dateiname: immer die neueste Version
+SETUP_URL = f"{LATEST}/{SETUP_EXE}"
+PORTABLE_URL = f"{LATEST}/{PORTABLE_ZIP}"
+SOURCE_URL = f"{LATEST}/{SOURCE_ZIP}"
+VERSION_URL = f"{LATEST}/{VERSION_JSON}"
+
+
+def release_file_url(version, name):
+    """Datei eines bestimmten Releases (für version.json: passt immer zur angegebenen Prüfsumme)."""
+    return f"{RELEASES_URL}/download/v{version}/{name}"
+
+
+# Brücke: Versionen bis 0.2.8 lesen ihre version.json aus dem früheren Download-Gist
 GIST_USER = "Critical-Error-149"
 GIST_ID = "79b10e874ee6302909641519633e18c5"
-GIST_ZIP = "PDF-Editor-portable.zip"
 GIST_PAGE = f"https://gist.github.com/{GIST_USER}/{GIST_ID}"
-GIST_RAW = f"https://gist.githubusercontent.com/{GIST_USER}/{GIST_ID}/raw"
-GIST_DOWNLOAD = f"{GIST_RAW}/{GIST_ZIP}"
-GIST_SOURCE_ZIP = "PDF-Editor-Quellcode.zip"  # Quellcode getrennt (AGPL 6 d: am selben Ort wie das Programm)
-GIST_SOURCE = f"{GIST_RAW}/{GIST_SOURCE_ZIP}"
-GIST_SETUP_EXE = "PDF-Editor-Setup.exe"  # Installationsprogramm (Inno Setup) – fester Name, immer die neueste Version
-GIST_SETUP = f"{GIST_RAW}/{GIST_SETUP_EXE}"
-VERSION_URL = f"{GIST_RAW}/version.json"
 TIMEOUT_MS = 15000
 
 
@@ -84,7 +96,7 @@ def gh_path():
 
 class UpdateCheck(QObject):
     """Prüft asynchron. finished(Ergebnis, neueste Version, Adresse der Download-Seite oder Fehlertext);
-    Ergebnis: "newer", "current", "none" (noch keine Versionsinfo im Gist) oder "error"."""
+    Ergebnis: "newer", "current", "none" (noch keine Versionsinfo im Release) oder "error"."""
     finished = Signal(str, str, str)
 
     def __init__(self, current_version, parent=None):
@@ -95,8 +107,9 @@ class UpdateCheck(QObject):
         self.data = {}  # vollständige version.json (Änderungsliste, Prüfsumme, Download) nach erfolgreicher Prüfung
 
     def start(self):
-        # Zeitstempel in der Adresse: GitHub liefert Gist-Dateien sonst evtl. noch minutenlang aus dem Zwischenspeicher
+        # Zeitstempel in der Adresse: an keinem Zwischenspeicher hängen bleiben
         req = QNetworkRequest(QUrl(f"{VERSION_URL}?t={int(time.time())}"))
+        req.setAttribute(QNetworkRequest.RedirectPolicyAttribute, QNetworkRequest.NoLessSafeRedirectPolicy)
         req.setTransferTimeout(TIMEOUT_MS)
         req.setHeader(QNetworkRequest.UserAgentHeader, f"PDF-Editor/{self.current}")
         self._reply = self._net.get(req)
@@ -108,7 +121,7 @@ class UpdateCheck(QObject):
         status = reply.attribute(QNetworkRequest.HttpStatusCodeAttribute)
         if reply.error() != QNetworkReply.NoError:
             if status == 404:
-                self.finished.emit("none", "", GIST_PAGE)
+                self.finished.emit("none", "", DOWNLOAD_PAGE)
             elif reply.error() == QNetworkReply.OperationCanceledError:
                 self.finished.emit("error", "", "GitHub hat nicht rechtzeitig geantwortet.")
             elif reply.error() in (QNetworkReply.HostNotFoundError, QNetworkReply.TimeoutError,
@@ -122,9 +135,9 @@ class UpdateCheck(QObject):
             data = json.loads(bytes(reply.readAll()).decode("utf-8"))
             latest = str(data["version"])
         except (ValueError, KeyError, TypeError):
-            self.finished.emit("error", "", "Unerwartete Antwort vom Download-Gist.")
+            self.finished.emit("error", "", "Unerwartete Antwort von GitHub.")
             return
-        page = data.get("page") or GIST_PAGE
+        page = data.get("page") or DOWNLOAD_PAGE
         self.data = data
         newer = parse_version(latest) > parse_version(self.current)
         self.finished.emit("newer" if newer else "current", latest, page)

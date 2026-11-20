@@ -12,12 +12,13 @@ Ergebnis: ein ZIP mit dem Ordner „PDF Editor“ (darin „PDF Editor.exe“). 
 verschicken – auf dem Zielrechner wird weder Python noch eine Installation benötigt. Den Quellcode gibt es als
 eigenes ZIP (bei Weitergabe mitgeben oder auf die Download-Seite verweisen).
 
---release: Das ZIP wird als GitHub-Release „v<Version>“ im eigenen Repository veröffentlicht (dort findet es
-„Einstellungen → Nach Updates suchen“). Vorher müssen alle Änderungen committet und gepusht sein; die erhöhte
-Versionsnummer wird automatisch committet und gepusht. Braucht die angemeldete GitHub-Kommandozeile (gh).
-Außerdem bekommt der (geheime) Download-Gist das neue ZIP – für andere ohne Zugang zum privaten Repository.
-Die Einträge unter „Neu“ in CHANGELOG.md werden zum Abschnitt der neuen Version (Pflicht für --release); sie stehen
-in der version.json des Gists und erscheinen im Programm bei einer neuen Version.
+--release: Setup, Programm- und Quellcode-ZIP werden als GitHub-Release „v<Version>“ im öffentlichen Repository
+veröffentlicht, unter festen Namen und mit einer version.json (dort findet sie „Nach Updates suchen“). Vorher müssen
+alle Änderungen committet und gepusht sein; die erhöhte Versionsnummer wird automatisch committet und gepusht.
+Braucht die angemeldete GitHub-Kommandozeile (gh). Der frühere Download-Gist bekommt nur noch einen Verweis und –
+für Versionen bis 0.2.8 – dieselbe version.json. Die Einträge unter „Neu“ in CHANGELOG.md werden zum Abschnitt der
+neuen Version (Pflicht für --release); sie stehen in der version.json und erscheinen im Programm bei einer neuen
+Version.
 """
 import datetime
 import hashlib
@@ -327,33 +328,38 @@ def check_release_ready():
 
 
 def publish(zip_path, source_zip, setup):
-    """Versionsnummer und Änderungsliste committen und pushen, dann Setup und beide ZIPs als Release „v<Version>“."""
+    """Versionsnummer und Änderungsliste committen und pushen, dann das Release „v<Version>“ anlegen (Setup, ZIPs,
+    version.json). Gibt den Pfad der version.json zurück (für die Gist-Brücke)."""
     from pdfeditor import updates
     tag = f"v{__version__}"
     print(f"== GitHub-Release {tag}")
-    changes = pending_changes()
     finalize_changelog()
     for args in (("commit", "-q", "-m", f"Version {__version__}", "--", "pdfeditor/__init__.py", "CHANGELOG.md"),
                  ("push", "-q", "origin", "main")):
         r = git(*args)
         if r.returncode != 0:
             raise SystemExit(f"git {args[0]} fehlgeschlagen:\n{r.stderr}")
-    notes = ("\n".join(f"- {c}" for c in changes) + "\n\nInstallieren: „…-Setup.exe“ ausführen (ohne Administrator"
-             "rechte, mit Startmenü-Eintrag). Portable Version: ZIP entpacken und „PDF Editor.exe“ starten (vorher den "
-             "alten Ordner „PDF Editor“ ersetzen). Der Quellcode liegt als eigenes ZIP bei.")
-    r = subprocess.run([updates.gh_path(), "release", "create", tag, setup, zip_path, source_zip, "--repo", updates.REPO,
-                        "--target", "main", "--title", f"{APP_NAME} {__version__}", "--notes", notes],
+    files = stage_release(zip_path, source_zip, setup)
+    r = subprocess.run([updates.gh_path(), "release", "create", tag, *files, "--repo", updates.REPO,
+                        "--target", "main", "--title", f"{APP_NAME} {__version__}", "--notes", release_notes()],
                        cwd=ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace")
     if r.returncode != 0:
         raise SystemExit(f"Release fehlgeschlagen:\n{r.stderr}")
     print(f"   veröffentlicht: {r.stdout.strip()}")
+    return files[-1]
 
 
-# Geheimer Gist zum Weitergeben: nicht auffindbar, aber jeder mit dem Link kann herunterladen. Das ZIP liegt dort
-# unter festem Namen – der Download-Link bleibt bei jeder Version gleich und liefert immer die neueste.
-# (Adressen stehen in pdfeditor/updates.py – „Nach Updates suchen“ liest die version.json aus dem Gist)
-from pdfeditor.updates import (GIST_DOWNLOAD, GIST_ID, GIST_PAGE, GIST_SETUP, GIST_SETUP_EXE,  # noqa: E402
-                               GIST_SOURCE, GIST_SOURCE_ZIP, GIST_ZIP)
+def release_notes():
+    """Beschreibung des Releases: Änderungen dieser Version und eine kurze Anleitung."""
+    from pdfeditor import updates
+    news = next((c for v, _d, c in read_changelog() if v == __version__), [])
+    return ("\n".join(f"- {c}" for c in news) +
+            f"\n\n**Installieren:** `{updates.SETUP_EXE}` herunterladen und ausführen (ohne Administratorrechte, "
+            "mit Startmenü-Eintrag und „Öffnen mit“ für PDFs).  \n"
+            f"**Portabel:** `{updates.PORTABLE_ZIP}` entpacken und „PDF Editor.exe“ starten.  \n"
+            "Neue Versionen meldet das Programm selbst („Jetzt aktualisieren“). Windows warnt evtl., weil das "
+            "Programm nicht signiert ist: „Weitere Informationen“ → „Trotzdem ausführen“.  \n"
+            f"**Quellcode:** `{updates.SOURCE_ZIP}` (GNU AGPL-3.0-or-later).")
 
 
 def sha256(path):
@@ -364,72 +370,67 @@ def sha256(path):
     return h.hexdigest()
 
 
-def update_gist(zip_path, source_zip, setup):
-    """Download-Gist auf diese Version setzen. Ein Gist ist ein Git-Repository; ZIPs und Setup (binär) gehen nur per git
-    push hinein. Jeder Stand ersetzt den vorigen ganz (ohne Verlauf), sonst wüchse der Gist mit jeder Version um
-    ~100 MB. version.json: Version, Prüfsummen/Größen fürs Selbst-Update (ZIP für die portable, Setup für die
-    installierte Version) und die Änderungsliste (Anzeige im Programm)."""
+def stage_release(zip_path, source_zip, setup):
+    """Release-Dateien unter festen Namen bereitlegen (…/releases/latest/download/<Name> zeigt so immer auf die
+    neueste Version) und version.json schreiben: Version, Links auf genau die Dateien dieses Releases, Prüfsummen/
+    Größen fürs Selbst-Update (ZIP für die portable, Setup für die installierte Version), Änderungsliste."""
+    from pdfeditor import updates
+    work = os.path.join(BUILD, "release")
+    remove_tree(work)
+    os.makedirs(work)
+    staged = []
+    for src, name in ((setup, updates.SETUP_EXE), (zip_path, updates.PORTABLE_ZIP), (source_zip, updates.SOURCE_ZIP)):
+        dst = os.path.join(work, name)
+        shutil.copy2(src, dst)
+        staged.append(dst)
+    url = lambda name: updates.release_file_url(__version__, name)  # noqa: E731
+    changelog = [{"version": v, "date": d, "changes": c} for v, d, c in read_changelog() if v != "Neu"][:20]
+    vj = os.path.join(work, updates.VERSION_JSON)
+    with open(vj, "w", encoding="utf-8") as f:
+        json.dump({"version": __version__, "date": datetime.date.today().isoformat(),
+                   "page": f"{updates.RELEASES_URL}/tag/v{__version__}",
+                   "download": url(updates.PORTABLE_ZIP), "sha256": sha256(zip_path), "size": os.path.getsize(zip_path),
+                   "setup": url(updates.SETUP_EXE), "setup_sha256": sha256(setup), "setup_size": os.path.getsize(setup),
+                   "source": url(updates.SOURCE_ZIP), "changelog": changelog}, f, ensure_ascii=False, indent=2)
+    staged.append(vj)
+    return staged
+
+
+def update_gist(version_json):
+    """Früherer Download-Gist: nur noch ein Verweis auf das öffentliche Repository – und, als Brücke für Versionen bis
+    0.2.8 (die ihre version.json dort lesen), dieselbe version.json wie im Release. Große Dateien liegen nicht mehr im
+    Gist (der war an seiner Größengrenze). Schlägt das Hochladen fehl, ist das kein Abbruchgrund: Versionen ab 0.2.9
+    brauchen den Gist nicht."""
+    from pdfeditor import updates
     work = os.path.join(BUILD, "gist")
     remove_tree(work)
     os.makedirs(work)
-    shutil.copy2(zip_path, os.path.join(work, GIST_ZIP))
-    shutil.copy2(source_zip, os.path.join(work, GIST_SOURCE_ZIP))
-    shutil.copy2(setup, os.path.join(work, GIST_SETUP_EXE))
-    shutil.copy2(CHANGELOG, os.path.join(work, "CHANGELOG.md"))
-    changelog = [{"version": v, "date": d, "changes": c} for v, d, c in read_changelog() if v != "Neu"][:20]
-    with open(os.path.join(work, "version.json"), "w", encoding="utf-8") as f:  # für „Nach Updates suchen“
-        json.dump({"version": __version__, "date": datetime.date.today().isoformat(),
-                   "download": GIST_DOWNLOAD, "page": GIST_PAGE, "source": GIST_SOURCE,
-                   "sha256": sha256(zip_path), "size": os.path.getsize(zip_path),
-                   "setup": GIST_SETUP, "setup_sha256": sha256(setup), "setup_size": os.path.getsize(setup),
-                   "changelog": changelog}, f, ensure_ascii=False, indent=2)
-    news = next((c for v, _d, c in read_changelog() if v == __version__), [])
-    size = os.path.getsize(zip_path) / 1024 / 1024
-    setup_size = os.path.getsize(setup) / 1024 / 1024
-    today = datetime.date.today().strftime("%d.%m.%Y")
+    shutil.copy2(version_json, os.path.join(work, "version.json"))
     with open(os.path.join(work, "PDF Editor – Download.md"), "w", encoding="utf-8") as f:
         f.write(f"""# PDF Editor – Download
 
-**Version {__version__}** vom {today} · Windows 10/11
+Der PDF Editor ist umgezogen: **[github.com/{updates.REPO}/releases/latest]({updates.DOWNLOAD_PAGE})**
 
-## ⬇️ [PDF Editor installieren]({GIST_SETUP}) ({setup_size:.0f} MB)
+- ⬇️ [Installieren (Setup)]({updates.SETUP_URL}) – keine Administratorrechte nötig
+- ⬇️ [Portable Version (ZIP)]({updates.PORTABLE_URL}) – entpacken und „PDF Editor.exe“ starten
+- [Quellcode]({updates.SOURCE_URL}) · [Projektseite](https://github.com/{updates.REPO})
 
-Setup herunterladen und ausführen – keine Administratorrechte nötig. Legt einen Startmenü-Eintrag an, bietet den
-PDF Editor unter „Öffnen mit“ für PDFs an und lässt sich unter „Einstellungen → Apps“ wieder entfernen.
-
-## ⬇️ [Portable Version (ZIP)]({GIST_DOWNLOAD}) ({size:.0f} MB)
-
-Ohne Installation, z. B. für einen USB-Stick: ZIP entpacken und im Ordner „PDF Editor“ die Datei
-**PDF Editor.exe** starten.
-
-Beide Links liefern immer die neueste Version. Neue Version: im Programm „Einstellungen → Updates & Feedback →
-Nach Updates suchen“ → „Jetzt aktualisieren“. Einstellungen bleiben erhalten.
-
-Windows warnt evtl. („Der Computer wurde durch Windows geschützt“), weil das Programm nicht signiert ist:
-„Weitere Informationen“ → „Trotzdem ausführen“.
-
-## Neu in Version {__version__}
-
-""" + "".join(f"- {c}\n" for c in news) + f"""
-Alle Änderungen: CHANGELOG.md (unten auf dieser Seite).
-
-## Quellcode
-
-Der PDF Editor ist freie Software (GNU AGPL-3.0-or-later). Der vollständige Quellcode dieser Version liegt kostenlos
-hier: [PDF-Editor-Quellcode.zip]({GIST_SOURCE}). Lizenztexte liegen dem Programm bei.
+Die Links liefern immer die neueste Version. Bereits installierte Versionen aktualisieren sich über
+„Einstellungen → Updates & Feedback → Nach Updates suchen“ → „Jetzt aktualisieren“.
 """)
 
     def run(*args):
-        r = subprocess.run(["git", *args], cwd=work, capture_output=True, text=True, encoding="utf-8",
-                           errors="replace")
-        if r.returncode != 0:
-            raise SystemExit(f"Gist: git {args[0]} fehlgeschlagen:\n{r.stderr}")
+        return subprocess.run(["git", *args], cwd=work, capture_output=True, text=True, encoding="utf-8",
+                              errors="replace")
 
     run("init", "-q", "-b", "main")
     run("add", "-A")
-    run("commit", "-q", "-m", f"PDF Editor {__version__}")
-    run("push", "-q", "--force", f"https://gist.github.com/{GIST_ID}.git", "main")
-    print(f"   Gist aktualisiert: {GIST_PAGE}")
+    run("commit", "-q", "-m", f"Verweis auf das Repository (PDF Editor {__version__})")
+    r = run("push", "-q", "--force", f"https://gist.github.com/{updates.GIST_ID}.git", "main")
+    if r.returncode != 0:
+        print(f"   WARNUNG: Gist nicht aktualisiert (nur für Versionen bis 0.2.8 nötig):\n{r.stderr.strip()}")
+    else:
+        print(f"   Gist aktualisiert (Verweis + version.json): {updates.GIST_PAGE}")
 
 
 def main():
@@ -489,8 +490,8 @@ def main():
         print(f"       {setup} ({mb(setup):.0f} MB)")
     print(f"Zum Testen ohne Entpacken: {os.path.join(app_dir, APP_NAME + '.exe')}")
     if release:
-        publish(zip_path, source_zip, setup)
-        update_gist(zip_path, source_zip, setup)
+        version_json = publish(zip_path, source_zip, setup)
+        update_gist(version_json)
 
 
 INSTALLER_SCRIPT = os.path.join(ROOT, "installer", "PDF Editor.iss")

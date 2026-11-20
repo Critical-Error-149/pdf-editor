@@ -5,6 +5,7 @@ Einstellungen (dort immer)."""
 from __future__ import annotations
 
 import html
+import re
 import zipfile
 
 from PySide6.QtCore import QUrl
@@ -13,6 +14,14 @@ from PySide6.QtWidgets import (QDialog, QDialogButtonBox, QLabel, QMessageBox, Q
                                QTextBrowser, QVBoxLayout)
 
 from . import __version__, self_update, updates
+
+
+_URL = re.compile(r"https://[^\s<>\"]+[^\s<>\".,;:)]")
+
+
+def _linkify(text):
+    """Adressen in der Änderungsliste anklickbar machen (Text ist schon HTML-maskiert)."""
+    return _URL.sub(lambda m: f"<a href='{m.group(0)}'>{m.group(0)}</a>", text)
 
 
 class UpdateDialog(QDialog):
@@ -30,7 +39,7 @@ class UpdateDialog(QDialog):
         if changes:
             parts = []
             for v, date, items in changes:
-                lis = "".join(f"<li>{html.escape(c)}</li>" for c in items)
+                lis = "".join(f"<li>{_linkify(html.escape(c))}</li>" for c in items)
                 parts.append(f"<p><b>Version {html.escape(v)}</b> {html.escape(date)}</p><ul>{lis}</ul>")
             browser.setHtml("".join(parts))
         else:
@@ -90,7 +99,7 @@ class UpdateDialog(QDialog):
         self.reject()
 
     def _open_page(self):
-        QDesktopServices.openUrl(QUrl(self.data.get("page") or updates.GIST_PAGE))
+        QDesktopServices.openUrl(QUrl(self.data.get("page") or updates.DOWNLOAD_PAGE))
 
     def _update(self):
         self.update_btn.setEnabled(False)

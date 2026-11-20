@@ -44,7 +44,7 @@ def update_source(data):
     from . import updates
     if is_installed() and data.get("setup") and data.get("setup_sha256"):
         return "setup", data["setup"], data["setup_sha256"], data.get("setup_size")
-    return "zip", data.get("download") or updates.GIST_DOWNLOAD, data.get("sha256"), data.get("size")
+    return "zip", data.get("download") or updates.PORTABLE_URL, data.get("sha256"), data.get("size")
 
 
 def can_self_update(kind="zip"):
@@ -85,6 +85,8 @@ class Downloader(QObject):
         self._file = open(self.path, "wb")
         req = QNetworkRequest(QUrl(self.url))
         req.setTransferTimeout(60000)  # bricht ab, wenn 60 s lang nichts ankommt
+        # GitHub-Releases leiten zum eigentlichen Speicherort weiter (https → https)
+        req.setAttribute(QNetworkRequest.RedirectPolicyAttribute, QNetworkRequest.NoLessSafeRedirectPolicy)
         self._reply = self._net.get(req)
         self._reply.readyRead.connect(self._read)
         self._reply.downloadProgress.connect(lambda done, total: self.progress.emit(done, total or self.size))

@@ -6,6 +6,7 @@ daraus den Abschnitt der neuen Version; das Programm zeigt ihn bei „Nach Updat
 ## Neu
 
 ## 0.2.9 – 20.11.2026
+- Neue Download-Adresse: Der PDF Editor liegt jetzt öffentlich auf GitHub – https://github.com/Critical-Error-149/pdf-editor/releases/latest – bitte diesen Link speichern und zum Weitergeben verwenden. Der bisherige Download-Link (Gist) verweist nur noch dorthin; Updates kommen wie gewohnt über „Jetzt aktualisieren“
 - Update-Hinweis: „Diese Version überspringen“ – gemeldet wird erst wieder die nächste neue Version
 - Mit dem Stift schreiben schaltet vom Maus-Werkzeug automatisch zum zuletzt benutzten Stift bzw. Marker (Tippen bleibt ein Klick; abschaltbar unter Einstellungen → Bedienung)
 - Striche und Marker zeichnet jetzt die Grafikkarte: bei jeder Zoomstufe sofort scharf, und nach neuen oder gelöschten Strichen muss nichts neu gerendert werden
