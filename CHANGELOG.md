@@ -4,6 +4,7 @@ Neue Einträge kommen unter „Neu“ (eine Zeile je Änderung, beginnend mit �
 daraus den Abschnitt der neuen Version; das Programm zeigt ihn bei „Nach Updates suchen“ an.
 
 ## Neu
+- Striche und Marker zeichnet jetzt die Grafikkarte: bei jeder Zoomstufe sofort scharf, und nach neuen oder gelöschten Strichen muss nichts neu gerendert werden
 - Gescannte PDFs: Seitenbilder liegen direkt auf der Grafikkarte – Scrollen viel flüssiger (gemessen 17 → 93 Bilder/s), Zoomen sofort scharf
 - Beim Verschieben von Strichen zeigte die Vorschau verfälschte Farben (z. B. Blau zu blass)
 - Schnellere Darstellung: Seitenkacheln liegen gesammelt auf der Grafikkarte und werden beim Scrollen und Zoomen wiederverwendet statt jedes Bild neu aufgebaut (Rechenzeit pro Bild beim Scrollen etwa halbiert, im Stillstand ein Fünftel, Zoomen schneller scharf)

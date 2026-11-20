@@ -142,6 +142,7 @@ class TileRenderer(QObject):
         self.scan_pages = set()
         self.base_scale = BASE_SCALE
         self._annot_rects = {}
+        self.ink = None             # ink_layer.InkLayer: Striche, die die Grafikkarte zeichnet (nur dann gesetzt)
 
     # ------------------------------------------------------------ Verwaltung
     def clear(self):
@@ -198,10 +199,13 @@ class TileRenderer(QObject):
         if cached is not None and cached[0] == gen:
             return cached[1]
         rects = []
+        gpu = self.ink.xrefs(index) if self.ink is not None and self.as_image else frozenset()
         try:
             page = self.document.page(index)
             with self.document.reading():
                 for a in list(page.annots()) + list(page.widgets()):
+                    if a.xref in gpu:
+                        continue  # zeichnet die Grafikkarte: keine Kachel nötig
                     r = a.rect
                     rects.append(QRectF(r.x0 - 2, r.y0 - 2, r.width + 4, r.height + 4))
         except Exception:
@@ -275,6 +279,10 @@ class TileRenderer(QObject):
         for key, entry in self.tiles.items():  # Wert ersetzen ändert die Reihenfolge nicht
             if key[0] == index and entry[1] == old and not entry[2].intersects(rect):
                 self.tiles[key] = (entry[0], new) + entry[2:]
+        if rect.isEmpty():  # nichts an den Kacheln geändert (nur Striche der Grafikkarte): Vorschau bleibt gültig
+            base = self.base.get(index)
+            if base is not None and base[1] == old:
+                self.base[index] = (base[0], new)
 
     def is_stale(self, index, gen):
         return gen != self.gen[index]
@@ -390,20 +398,27 @@ class TileRenderer(QObject):
             return entry[0]
         dl = None
         if page.first_annot is not None or page.first_widget is not None:
+            # weglassen: gerade verschobene Anmerkungen (die Vorschau zeigt sie) und Striche, die die Grafikkarte
+            # selbst zeichnet (ink_layer.py)
+            exclude = set(self.hidden.get(index) or ())
+            if self.ink is not None and self.as_image:
+                exclude |= self.ink.xrefs(index)
             dl = mupdf.FzDisplayList(mupdf.fz_bound_page(page.this))
             dev = mupdf.fz_new_list_device(dl)
+            drawn = True
             try:
                 with self.document.reading():
                     pp = mupdf.pdf_page_from_fz_page(page.this)
                     cookie = mupdf.FzCookie()
-                    hidden = self.hidden.get(index)
-                    if hidden:  # gerade verschobene Anmerkungen weglassen (die Vorschau zeigt sie)
-                        self._run_annots(page, dev, exclude=hidden)
+                    if exclude:
+                        drawn = self._run_annots(page, dev, exclude=exclude) is not None
                     else:
                         mupdf.pdf_run_page_annots(pp, dev, mupdf.FzMatrix(), cookie)
                     mupdf.pdf_run_page_widgets(pp, dev, mupdf.FzMatrix(), cookie)
             finally:
                 mupdf.fz_close_device(dev)
+            if not drawn and page.first_widget is None:
+                dl = None  # nichts mehr für MuPDF übrig: Kacheln brauchen keine Anmerkungsebene
         self._adl[index] = (dl, gen)
         while len(self._adl) > DL_BUDGET:
             self._adl.popitem(last=False)

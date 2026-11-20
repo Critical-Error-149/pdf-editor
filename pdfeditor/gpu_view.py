@@ -31,7 +31,7 @@ from PySide6.QtGui import (QColor, QImage, QMatrix4x4, QPainter, QPainterPath, Q
                            QRhiVertexInputLayout, QRhiViewport, QShader)
 from PySide6.QtWidgets import QRhiWidget
 
-from . import theme
+from . import ink_layer, theme
 from .renderer import MEMORY_SCALE, P_BASE, P_PREFETCH, P_VISIBLE, TILE, level_for
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -161,7 +161,10 @@ class GpuViewport(QRhiWidget):
             res += [st["srb"], st["tex"]]
         for at in self._atlases:
             res += [*at["srbs"], at["tex"]]
-        for name in ("_white_srb", "_white_page_srb", "_video_template", "_ps", "_video_ps", "_vbuf", "_layer_vbuf",
+        for ubuf, srb in getattr(self, "_ink_slots", []):
+            res += [srb, ubuf]
+        for name in ("_ink_ps", "_ink_vbuf", "_white_srb", "_white_page_srb", "_video_template", "_ps", "_video_ps",
+                     "_vbuf", "_layer_vbuf",
                      "_ubuf", "_ubuf_pages", "_video_cbuf", "_white_tex", "_nearest", "_linear", "_mip"):
             res.append(getattr(self, name, None))
         done = set()
@@ -233,6 +236,11 @@ class GpuViewport(QRhiWidget):
         self._layer = None
         self._layer_vbuf = None
         self._layer_vbuf_size = 0
+        self._ink_ps = None
+        self._ink_slots = []
+        self._ink_vbuf = None
+        self._ink_vbuf_size = 0
+        self._ink = None             # (Schlüssel, [(Seite, erste Ecke, Anzahl)]) der hochgeladenen Striche
 
     def initialize(self, cb):
         rhi = self.rhi()
@@ -289,6 +297,7 @@ class GpuViewport(QRhiWidget):
         ps.create()
         self._ps = ps
         self._video_ps = self._make_video_pipeline(layout, blend)
+        self._ink_ps = self._make_ink_pipeline(blend)
 
     def _make_video_pipeline(self, layout, blend):
         """Zweite Pipeline: Videobild aus Y/U/V-Texturen (Umrechnung nach RGB im Shader)."""
@@ -308,6 +317,40 @@ class GpuViewport(QRhiWidget):
         ps.create()
         self._video_template = srb
         return ps
+
+    def _make_ink_pipeline(self, blend):
+        """Pipeline für Striche (ink_layer.py): Dreiecke ohne Textur, Tiefentest „ungleich“ – jede Anmerkung deckt
+        jeden Pixel nur einmal (Marker werden an eigenen Überlappungen nicht dunkler)."""
+        rhi = self._rhi
+        ps = rhi.newGraphicsPipeline()
+        ps.setShaderStages([QRhiShaderStage(QRhiShaderStage.Vertex, _shader("ink.vert.qsb")),
+                            QRhiShaderStage(QRhiShaderStage.Fragment, _shader("ink.frag.qsb"))])
+        layout = QRhiVertexInputLayout()
+        layout.setBindings([QRhiVertexInputBinding(ink_layer.FLOATS * 4)])
+        A = QRhiVertexInputAttribute
+        layout.setAttributes([A(0, 0, A.Float2, 0), A(0, 1, A.Float2, 8), A(0, 2, A.Float2, 16),
+                              A(0, 3, A.Float4, 24)])
+        ps.setVertexInputLayout(layout)
+        ps.setTargetBlends([blend])
+        ps.setDepthTest(True)
+        ps.setDepthWrite(True)
+        ps.setDepthOp(QRhiGraphicsPipeline.NotEqual)
+        self._ink_slots = []
+        ps.setShaderResourceBindings(self._ink_slot(0)[1])
+        ps.setRenderPassDescriptor(self.renderTarget().renderPassDescriptor())
+        ps.create()
+        return ps
+
+    def _ink_slot(self, i):
+        """Matrix-Puffer + Bindung für die i-te Seite mit Strichen (je Seite eine eigene Lage)."""
+        while len(self._ink_slots) <= i:
+            ubuf = self._rhi.newBuffer(QRhiBuffer.Dynamic, QRhiBuffer.UniformBuffer, 80)
+            ubuf.create()
+            srb = self._rhi.newShaderResourceBindings()
+            srb.setBindings([QRhiShaderResourceBinding.uniformBuffer(0, QRhiShaderResourceBinding.VertexStage, ubuf)])
+            srb.create()
+            self._ink_slots.append((ubuf, srb))
+        return self._ink_slots[i]
 
     def _video_srb(self, texs, cbuf):
         B = QRhiShaderResourceBinding
@@ -513,6 +556,7 @@ class GpuViewport(QRhiWidget):
 
         layer = self._page_layer(view, dpr, batch, w, h)
         incomplete = layer["dirty"]
+        ink_draws = self._ink_layer(view, dpr, batch, w, h, layer["region"])
         self._draw_videos(dpr, batch, quad)
         self._draw_overlay(view, dpr, batch, quad)
         self._draw_ruler(view, dpr, batch, quad, poly)
@@ -542,6 +586,13 @@ class GpuViewport(QRhiWidget):
                 cb.setShaderResources(srb)
                 cb.draw(n, 1, first, 0)
                 first += n
+        if ink_draws:  # Striche über den Seiten (eigene Pipeline mit Tiefentest)
+            cb.setGraphicsPipeline(self._ink_ps)
+            cb.setViewport(QRhiViewport(0, 0, w, h))
+            cb.setVertexInput(0, [(self._ink_vbuf, 0)])
+            for srb, first, n in ink_draws:
+                cb.setShaderResources(srb)
+                cb.draw(n, 1, first, 0)
         if data:
             first = 0
             current = None
@@ -714,6 +765,60 @@ class GpuViewport(QRhiWidget):
         batch.updateDynamicBuffer(self._ubuf_pages, 0, 64,
                                   array("f", (self._rhi.clipSpaceCorrMatrix() * m).data()).tobytes())
         return layer
+
+    def _ink_layer(self, view, dpr, batch, w, h, region):
+        """Striche der Seiten im Bereich: Dreiecke nur bei Änderungen neu hochladen; je Seite eine Matrix
+        (Seitenlage × Zoom × Bildlauf), jedes Bild neu gesetzt – Scrollen und Zoomen kosten so nichts."""
+        ink = getattr(view, "ink", None)
+        if ink is None or not ink.enabled or self._ink_ps is None:
+            return []
+        pages = []
+        for item in view.items_:
+            br = item.sceneBoundingRect()
+            if not region.intersects(br):
+                if br.top() > region.bottom():
+                    break
+                continue
+            entry = ink.page(item.index)
+            if entry[3]:
+                pages.append((item, entry))
+        key = tuple((item.index, entry[0]) for item, entry in pages)
+        if self._ink is None or self._ink[0] != key:
+            data = b"".join(entry[2] for _item, entry in pages)
+            if data:
+                if self._ink_vbuf is None or self._ink_vbuf_size < len(data):
+                    if self._ink_vbuf is not None:
+                        self._discard([self._ink_vbuf])
+                    self._ink_vbuf_size = max(len(data), self._ink_vbuf_size * 2, 256 * 1024)
+                    self._ink_vbuf = self._rhi.newBuffer(QRhiBuffer.Dynamic, QRhiBuffer.VertexBuffer,
+                                                         self._ink_vbuf_size)
+                    self._ink_vbuf.create()
+                batch.updateDynamicBuffer(self._ink_vbuf, 0, len(data), data)
+            spans, first = [], 0
+            for item, entry in pages:
+                spans.append((item.index, first, entry[3]))
+                first += entry[3]
+            self._ink = (key, spans)
+            for item, entry in pages:  # Vorschau-Striche, die jetzt als Anmerkung gezeichnet werden: weg
+                view._gpu_ink_shown(item.index, entry[1])
+        vt = view.viewportTransform()
+        s = vt.m11() * dpr
+        corr = self._rhi.clipSpaceCorrMatrix()
+        px = array("f", (2.0 / max(1, w), 2.0 / max(1, h), 0.0, 0.0)).tobytes()
+        draws = []
+        for i, (idx, first, n) in enumerate(self._ink[1]):
+            item = view.items_[idx] if idx < len(view.items_) else None
+            if item is None:
+                continue
+            o = vt.map(item.pos())
+            m = QMatrix4x4()
+            m.ortho(0, w, h, 0, -1, 1)
+            m.translate(o.x() * dpr, o.y() * dpr)
+            m.scale(s, s)
+            ubuf, srb = self._ink_slot(i)
+            batch.updateDynamicBuffer(ubuf, 0, 80, array("f", (corr * m).data()).tobytes() + px)
+            draws.append((srb, first, n))
+        return draws
 
     def _build_page_layer(self, view, dpr, batch, key, visible, ox, oy, dev):
         mx, my = visible.width() * LAYER_MARGIN, visible.height() * LAYER_MARGIN

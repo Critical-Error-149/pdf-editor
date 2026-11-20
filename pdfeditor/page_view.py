@@ -23,6 +23,7 @@ from .renderer import P_BASE, P_PREFETCH, P_VISIBLE, TILE, TileRenderer, level_f
 from .media import MediaController, kind_of as media_kind_of
 from . import prefs
 from .ruler import Ruler, format_length
+from .ink_layer import InkLayer
 from .scan_pages import ScanPages
 from .touch_scroll import long_press_ms
 
@@ -336,6 +337,9 @@ class PageView(QGraphicsView):
         # Scanseiten: Bild direkt als Textur (nur Grafikkarte, eingeschaltet in _setup_gpu)
         self.scans = ScanPages(document, self.renderer, self)
         self.scans.enabled = False
+        # Striche als Dreiecke direkt auf der Grafikkarte (nur Grafikkarte, eingeschaltet in _setup_gpu)
+        self.ink = InkLayer(document, self.renderer, self)
+        self.ink.enabled = False
         self._zoom_settle = QTimer(self)
         self._zoom_settle.setSingleShot(True)
         self._zoom_settle.setInterval(ZOOM_SETTLE_MS)
@@ -394,6 +398,9 @@ class PageView(QGraphicsView):
         self.gpu = True
         self.renderer.as_image = True
         self.scans.enabled = str(self.settings.qs.value("scan_textures", "true")).lower() == "true"
+        self.ink.enabled = str(self.settings.qs.value("gpu_ink", "true")).lower() == "true"
+        self.ink.clear()
+        self.renderer.ink = self.ink if self.ink.enabled else None
         self._swap_viewport(vp)
         # Ein Widget, das sich bei jedem Bild neu zeichnet (z. B. ein normaler Bildlaufbalken),
         # würde das ganze Fenster ausbremsen -> Balken zeichnet die Grafikkarte, Updates immer komplett
@@ -438,6 +445,8 @@ class PageView(QGraphicsView):
         self.renderer.as_image = False
         self.scans.enabled = False
         self.scans.clear()
+        self.ink.enabled = False
+        self.renderer.ink = None  # Striche wieder in den Kacheln
         self.renderer.clear()
         self._overlay_cache = None
         for s in self._layer:  # Striche der Ebene zeigt jetzt wieder die Vorschau
@@ -615,7 +624,11 @@ class PageView(QGraphicsView):
             self.media.reposition()
         r = self.document.changed_rect  # nur dieser Bereich muss neu gerendert werden (None = ganze Seite)
         self.scans.page_changed(index)  # Seiteninhalt geändert? Dann ist es evtl. keine reine Scanseite mehr
-        self.renderer.invalidate_page(index, QRectF(r.x0, r.y0, r.width, r.height) if r is not None else None)
+        if self.gpu and self.ink.tiles_unchanged(index):
+            rect = QRectF()  # nur Striche der Grafikkarte betroffen: alle Kacheln bleiben gültig
+        else:
+            rect = QRectF(r.x0, r.y0, r.width, r.height) if r is not None else None
+        self.renderer.invalidate_page(index, rect)
         if 0 <= index < len(self.items_):
             self.items_[index].invalidate()
         if self._selected and self._selected[0] == index and not self._annot_op:
@@ -626,6 +639,7 @@ class PageView(QGraphicsView):
         scene = self.scene()
         scene.clear()
         self.scans.clear()
+        self.ink.clear()
         self.renderer.clear()
         self._ghosts = {}
         self._live = None
@@ -707,7 +721,9 @@ class PageView(QGraphicsView):
         if self.renderer.zooming or level != level_for(self._device_scale()):
             return False
         step = TILE / level
-        return area.intersects(QRectF(tx * step, ty * step, step, step).translated(item.pos()))
+        trect = QRectF(tx * step, ty * step, step, step)
+        # Scanseite geworden, seit die Kachel angefordert wurde: nur noch Kacheln mit Anmerkungen
+        return area.intersects(trect.translated(item.pos())) and self._tile_needed(idx, trect)
 
     def _on_tile_ready(self, index, rect):
         if 0 <= index < len(self.items_):
@@ -809,6 +825,7 @@ class PageView(QGraphicsView):
             idx = item.index
             dist = abs(br.center().y() - center.y())
             if self.gpu:
+                self.ink.prepare(idx)  # Strich-Dreiecke in der Leerlaufzeit vorbereiten
                 self.scans.request(idx)  # Scanseite? Bild schon vorab dekodieren
                 if idx not in r.scan_pages and self.scans.maybe_scan(idx):
                     continue  # erst prüfen – vorab rastern lohnt sich nur bei normalen Seiten
@@ -829,18 +846,27 @@ class PageView(QGraphicsView):
                         trect = QRectF(tx * step, ty * step, step, step).translated(item.pos())
                         r.request(("tile", idx, level, tx, ty), (P_PREFETCH, abs(trect.center().y() - center.y())))
 
-    def _retire_preview(self, index):
+    def _retire_preview(self, index, xref=None):
         """Vorschau-Strich stehen lassen, bis die Seite mit dem neuen Strich neu gerendert ist
-        (sonst blitzt der Strich kurz weg)."""
+        (sonst blitzt der Strich kurz weg). xref: die neue Anmerkung – zeichnet die Grafikkarte sie selbst
+        (ink_layer.py), verschwindet die Vorschau schon im selben Bild (_gpu_ink_shown)."""
         if self._preview is None:
             return
         if self._live is not None and self._live["preview"] is self._preview:
             self._live["done"] = True  # Strich-Ebene zeigt ihn weiter, bis die Seite fertig ist
             self._live = None
         ghost = self._preview
+        ghost.setData(0, xref)
         self._ghosts.setdefault(index, []).append(ghost)
         self._preview = None
         QTimer.singleShot(4000, lambda: self._drop_ghost(index, ghost))  # Sicherheitsnetz (nur dieser Strich)
+
+    def _gpu_ink_shown(self, index, xrefs):
+        """Die Grafikkarte zeichnet jetzt diese Striche der Seite: zugehörige Vorschau-Striche entfernen."""
+        for ghost in list(self._ghosts.get(index, ())):
+            x = ghost.data(0)
+            if x is not None and x in xrefs:
+                self._drop_ghost(index, ghost)
 
     def _drop_ghost(self, index, ghost):
         """Einen einzelnen Strich entfernen (falls die Seite nach Sekunden noch nicht neu gerendert ist)."""
@@ -1093,11 +1119,11 @@ class PageView(QGraphicsView):
             self._layer.append(line)
             self._live = line
         color, width, opacity = self._stroke_style(tool, as_float=True)
-        self.document.add_ink(item.index, [pts], color, width, opacity)
+        xref = self.document.add_ink(item.index, [pts], color, width, opacity)
         length = math.dist(a, b)
         if length > 0:
             self.status_message.emit(f"Linie: {format_length(length)}")
-        self._retire_preview(item.index)
+        self._retire_preview(item.index, xref)
         self.viewport().update()
 
     def _ruler_grab(self, vpos):
@@ -2089,7 +2115,9 @@ class PageView(QGraphicsView):
                     item.index, raw, max(2.0, width) + 2.0, scribble=([pts], color, width, opacity)):
                 self.status_message.emit("Durchgestrichenes gelöscht")
             else:
-                self.document.add_ink(item.index, [pts], color, width, opacity)
+                xref = self.document.add_ink(item.index, [pts], color, width, opacity)
+                self._retire_preview(item.index, xref)
+                return
             self._retire_preview(item.index)
             return
         self._remove_preview()

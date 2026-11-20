@@ -210,7 +210,16 @@ die Grafikkarte nach einigen Sekunden erneut (höchstens zweimal, jeweils mit Pr
   im schwebenden Fenster behält das Fenster seine Größe
 - Dunkles Design im Stil „Modern Dark“
 - Seitenansicht über die Grafikkarte (Direct3D 11): flüssiges Scrollen mit bis zu 120 Hz; fällt bei Problemen
-  automatisch auf die normale Darstellung zurück (erzwingen: Umgebungsvariable `PDFEDITOR_RENDERER=raster`)
+  automatisch auf die normale Darstellung zurück (erzwingen: Umgebungsvariable `PDFEDITOR_RENDERER=raster`).
+  Aufgebaut aus Ebenen, die die Grafikkarte jedes Bild neu zusammensetzt; Unverändertes wird wiederverwendet:
+  - Seitenebene: Kacheln von MuPDF in wenigen Atlas-Texturen; nur bei Änderungen neu aufgebaut, Scrollen und
+    Zoomen verschieben/skalieren sie über ihre Matrix
+  - Scanseiten (nur ein JPEG, evtl. unsichtbarer OCR-Text): das Bild selbst als Textur mit Mipmaps, im Hintergrund
+    dekodiert – sofort scharf in jeder Zoomstufe (`scan_pages.py`; abschalten: Einstellung `scan_textures=false`)
+  - Striche (Freihand, Marker): als Dreiecke aus dem Erscheinungsbild, das MuPDF schreibt – bei jedem Zoom scharf,
+    nach neuen/gelöschten Strichen wird keine Kachel neu gerastert (`ink_layer.py`, `shaders/ink.*`; abschalten:
+    Einstellung `gpu_ink=false`)
+  - darüber Überlagerung, Strich in Arbeit, Lineal, Bildlaufbalken
 - Stiftgesten: gerade Linie bzw. Kreis/Rechteck durch Zeichnen und kurzes Halten,
   Löschen durch Durchkritzeln; Formen übernehmen die Eigenschaften des gewählten Stifts
 - Dateileiste (F3) zum Durchsuchen von Ordnern und Öffnen von Dateien, Liste „Zuletzt“
@@ -232,8 +241,10 @@ PDF-Reader sichtbar und dort weiterhin bearbeitbar.
 | `pdfeditor/page_view.py` | Seitenansicht, Werkzeuge, Stifteingabe |
 | `pdfeditor/thumbnails.py` | Miniatur-Seitenleiste |
 | `pdfeditor/main_window.py` | Hauptfenster, Aktionen, Dialoge |
-| `pdfeditor/gpu_view.py`, `pdfeditor/shaders/` | Seitenfläche über Direct3D (Kacheln als Texturen, Strich-Ebene, Bildlaufbalken) |
+| `pdfeditor/gpu_view.py`, `pdfeditor/shaders/` | Seitenfläche über Direct3D (Seitenebene mit Kachel-Atlas, Scan-Texturen, Striche, Strich-Ebene, Bildlaufbalken) |
 | `pdfeditor/renderer.py` | Kachel-Rendern im Leerlauf; Seiteninhalt und Anmerkungen getrennt (nach einem Strich nur die betroffenen Kacheln neu) |
+| `pdfeditor/scan_pages.py` | Scanseiten erkennen und ihr Bild im Hintergrund für die Grafikkarte dekodieren |
+| `pdfeditor/ink_layer.py` | Striche als Dreiecke für die Grafikkarte (aus MuPDFs Erscheinungsbild) |
 | `pdfeditor/image_page.py` | Bildseiten: Aufbau, Ausschnitt, Dialog mit Vorschau |
 | `pdfeditor/settings_dialog.py` | Einstellungen |
 | `pdfeditor/tabs.py` | Tabs, Tab-Gruppen und Teilung (nebeneinander/untereinander) |
