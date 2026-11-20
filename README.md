@@ -57,7 +57,9 @@ und aktualisiert den Download-Gist (Setup, beide ZIPs, `CHANGELOG.md`, `version.
 
 Updates im Programm: Kurz nach dem Start prüft das Programm im Hintergrund `version.json` im Gist (abschaltbar unter
 Einstellungen → Updates & Feedback; dort auch „Nach Updates suchen“) – ohne Anmeldung, also auch bei anderen. Bei
-einer neuen Version zeigt ein Fenster die Änderungen; „Jetzt aktualisieren“ lädt das Programm-ZIP, prüft die
+einer neuen Version zeigt ein Fenster die Änderungen („Diese Version überspringen“: beim Start erst wieder bei der
+nächsten Version melden – Einstellung `updates/skipped`; „Nach Updates suchen“ zeigt sie weiter, mit „Wieder
+melden“); „Jetzt aktualisieren“ lädt das Programm-ZIP, prüft die
 Prüfsumme (SHA-256), entpackt es und schließt das Programm (ungespeicherte Änderungen werden abgefragt). Ein kleines
 PowerShell-Skript (`pdfeditor/self_update.py`) ersetzt dann die Programmdateien – die alten werden vorher zur Seite
 gelegt und bei einem Fehler wiederhergestellt – und startet die neue Version. Das funktioniert ohne Installation,

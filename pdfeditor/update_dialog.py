@@ -1,6 +1,7 @@
 """Dialog „Update verfügbar“: Änderungen seit der installierten Version, „Jetzt aktualisieren“ (Selbst-Update),
-„Download-Seite öffnen“, „Später“. Erscheint nach der automatischen Prüfung beim Start oder nach „Nach Updates
-suchen“ in den Einstellungen."""
+„Download-Seite öffnen“, „Diese Version überspringen“ (bzw. „Wieder melden“), „Später“. Erscheint nach der
+automatischen Prüfung beim Start (nicht für eine übersprungene Version) oder nach „Nach Updates suchen“ in den
+Einstellungen (dort immer)."""
 from __future__ import annotations
 
 import html
@@ -44,6 +45,14 @@ class UpdateDialog(QDialog):
         buttons = QDialogButtonBox()
         self.update_btn = buttons.addButton("Jetzt aktualisieren", QDialogButtonBox.AcceptRole)
         self.page_btn = buttons.addButton("Download-Seite öffnen", QDialogButtonBox.ActionRole)
+        # Überspringen: erst eine neuere Version wird beim Start wieder gemeldet
+        self.latest = latest
+        self.skipped = updates.skipped_version() == latest
+        self.skip_btn = buttons.addButton("Wieder melden" if self.skipped else "Diese Version überspringen",
+                                          QDialogButtonBox.ActionRole)
+        self.skip_btn.setToolTip("Beim Programmstart wieder auf diese Version hinweisen" if self.skipped else
+                                 "Beim Programmstart nicht mehr auf diese Version hinweisen – erst wieder bei der "
+                                 "nächsten. „Nach Updates suchen“ zeigt sie weiterhin an.")
         self.later_btn = buttons.addButton("Später", QDialogButtonBox.RejectRole)
         for b in self.findChildren(QPushButton):
             b.setAutoDefault(False)
@@ -54,14 +63,31 @@ class UpdateDialog(QDialog):
         if ok and not self.sha256:
             ok, reason = False, "Für diese Version fehlt die Prüfsumme – bitte selbst herunterladen."
         self.update_btn.setEnabled(ok)
+        notes = []
         if not ok:
             self.update_btn.setToolTip(reason)
-            self.status.setText(reason)
+            notes.append(reason)
+        if self.skipped:
+            notes.append("Diese Version hast du übersprungen – beim Programmstart wird sie nicht gemeldet.")
+        self.status.setText("\n".join(notes))
         self.update_btn.clicked.connect(self._update)
         self.page_btn.clicked.connect(self._open_page)
+        self.skip_btn.clicked.connect(self._toggle_skip)
         self.later_btn.clicked.connect(self.reject)
         lay.addWidget(buttons)
         self._dl = None
+
+    def _toggle_skip(self):
+        if self.skipped:  # „Wieder melden“
+            updates.set_skipped_version("")
+            msg = f"Version {self.latest} wird beim Programmstart wieder gemeldet."
+        else:
+            updates.set_skipped_version(self.latest)
+            msg = f"Version {self.latest} übersprungen – gemeldet wird erst die nächste neue Version."
+        status = getattr(self.window_, "statusBar", None)
+        if callable(status):
+            status().showMessage(msg, 6000)
+        self.reject()
 
     def _open_page(self):
         QDesktopServices.openUrl(QUrl(self.data.get("page") or updates.GIST_PAGE))

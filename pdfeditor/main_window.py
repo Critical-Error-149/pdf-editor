@@ -1642,7 +1642,8 @@ class MainWindow(QMainWindow):
         self._start_check.start()
 
     def _start_check_done(self, result, latest, _info):
-        if result == "newer":
+        from . import updates
+        if result == "newer" and latest != updates.skipped_version():  # übersprungene Version: still bleiben
             self.show_update_dialog(latest, self._start_check.data)
 
     def show_update_dialog(self, latest, data, modal=False):

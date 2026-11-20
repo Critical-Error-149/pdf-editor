@@ -36,6 +36,24 @@ VERSION_URL = f"{GIST_RAW}/version.json"
 TIMEOUT_MS = 15000
 
 
+SKIP_KEY = "updates/skipped"  # übersprungene Version: die Prüfung beim Start meldet genau diese nicht mehr
+
+
+def skipped_version():
+    from PySide6.QtCore import QSettings
+    return str(QSettings("PDFEditor", "PDFEditor").value(SKIP_KEY, "") or "")
+
+
+def set_skipped_version(version):
+    """Version überspringen ("" = nichts überspringen). Eine neuere Version wird wieder gemeldet."""
+    from PySide6.QtCore import QSettings
+    qs = QSettings("PDFEditor", "PDFEditor")
+    if version:
+        qs.setValue(SKIP_KEY, version)
+    else:
+        qs.remove(SKIP_KEY)
+
+
 def parse_version(text):
     """„v0.2.10“ → (0, 2, 10); ohne Zahlen → ()."""
     return tuple(int(n) for n in re.findall(r"\d+", text or ""))
