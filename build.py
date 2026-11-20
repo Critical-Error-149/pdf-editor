@@ -419,14 +419,21 @@ Die Links liefern immer die neueste Version. Bereits installierte Versionen aktu
 „Einstellungen → Updates & Feedback → Nach Updates suchen“ → „Jetzt aktualisieren“.
 """)
 
-    def run(*args):
-        return subprocess.run(["git", *args], cwd=work, capture_output=True, text=True, encoding="utf-8",
-                              errors="replace")
-
-    run("init", "-q", "-b", "main")
-    run("add", "-A")
-    run("commit", "-q", "-m", f"Verweis auf das Repository (PDF Editor {__version__})")
-    r = run("push", "-q", "--force", f"https://gist.github.com/{updates.GIST_ID}.git", "main")
+    # Über die GitHub-API statt git push: Der Gist liegt über seiner Größengrenze (alte ZIPs im Verlauf), git push nimmt
+    # GitHub dort nicht mehr an – das Bearbeiten über die API (kleine Textdateien) funktioniert
+    files = {}
+    for name in ("version.json", "PDF Editor – Download.md"):
+        with open(os.path.join(work, name), encoding="utf-8") as f:
+            files[name] = {"content": f.read()}
+    gh = updates.gh_path()
+    r = subprocess.run([gh, "api", f"gists/{updates.GIST_ID}"], capture_output=True, text=True, encoding="utf-8",
+                       errors="replace")
+    if r.returncode == 0:
+        for name in json.loads(r.stdout).get("files", {}):
+            files.setdefault(name, None)  # alles andere (früher: ZIPs, Setup) entfernen
+        r = subprocess.run([gh, "api", "-X", "PATCH", f"gists/{updates.GIST_ID}", "--input", "-"],
+                           input=json.dumps({"files": files}), capture_output=True, text=True, encoding="utf-8",
+                           errors="replace")
     if r.returncode != 0:
         print(f"   WARNUNG: Gist nicht aktualisiert (nur für Versionen bis 0.2.8 nötig):\n{r.stderr.strip()}")
     else:

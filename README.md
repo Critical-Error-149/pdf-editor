@@ -1,6 +1,8 @@
 # PDF Editor
 
-Windows-PDF-Editor auf Basis von **PySide6 (Qt)** und **PyMuPDF**.
+Windows-PDF-Editor für Stift, Touch und Maus (z. B. Surface) auf Basis von **PySide6 (Qt)** und **PyMuPDF**:
+schreiben und markieren, vorhandenen Text bearbeiten, Seiten einfügen, drehen und ordnen, Passwörter entfernen,
+Lineal, Scans flüssig über die Grafikkarte – kostenlos, ohne Werbung, ohne Konto. Freie Software (GNU AGPL-3.0).
 
 ## ⬇️ [Neueste Version herunterladen](https://github.com/Critical-Error-149/pdf-editor/releases/latest)
 
