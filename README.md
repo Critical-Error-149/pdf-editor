@@ -110,7 +110,10 @@ die Grafikkarte nach einigen Sekunden erneut (höchstens zweimal, jeweils mit Pr
   drücken → „Einfügen“ (an dieser Stelle) – auch Bilder und Text aus anderen Programmen
 - Maus-Werkzeug mit der Maus: Ziehen markiert Text (Textcursor über Text) – Strg+C kopiert, Rechtsklick auf die
   Markierung: Textmarker, Unterstreichen, Durchstreichen; Umlaute aus LaTeX-PDFs („k¨orper“) werden beim Kopieren
-  zusammengesetzt. Die Seite verschiebt man mit Mausrad, mittlerer Maustaste, Finger oder Stift
+  zusammengesetzt. Die Seite verschiebt man mit Mausrad, mittlerer Maustaste oder Finger
+- Maus-Werkzeug mit dem Stift: Über die Seite ziehen wechselt automatisch zum zuletzt benutzten Stift bzw. Marker
+  und zeichnet ab dem Aufsetzpunkt; Tippen bleibt ein Klick (Link, Video, Notiz), Halten ein Rechtsklick
+  (abschaltbar unter Einstellungen → Bedienung – dann verschiebt der Stift die Seite)
 - Fingermodus (Zeichnen → Auswahl → „Finger“): Ein Finger zeichnet sofort mit dem gewählten Stift, Marker,
   Radierer bzw. der Form; mit zwei Fingern wird weiter gezoomt/verschoben – kommt der zweite Finger etwas später,
   wird die gerade angefangene Zeichnung verworfen (Wegradiertes kommt zurück). Im Maus-/Lasso-Werkzeug scrollt

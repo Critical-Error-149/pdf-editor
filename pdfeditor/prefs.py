@@ -16,6 +16,18 @@ def after_insert_mouse() -> bool:
     return str(_value("input/after_insert_mouse", "false")).lower() in ("true", "1")
 
 
+def pen_auto_draw() -> bool:
+    """Stift auf der Seite im Maus-Werkzeug ziehen: automatisch zum zuletzt benutzten Stift/Marker wechseln?
+    (Tippen bleibt ein Klick, Halten ein Rechtsklick.)"""
+    return str(_value("input/pen_auto_draw", "true")).lower() in ("true", "1")
+
+
+def set_pen_auto_draw(on: bool):
+    from PySide6.QtCore import QSettings
+    QSettings("PDFEditor", "PDFEditor").setValue("input/pen_auto_draw", "true" if on else "false")
+    _cache["input/pen_auto_draw"] = "true" if on else "false"
+
+
 def finger_draw() -> bool:
     """Zeichnet ein einzelner Finger mit dem aktiven Zeichenwerkzeug (statt zu scrollen)?"""
     return str(_value("input/finger_draw", "false")).lower() in ("true", "1")

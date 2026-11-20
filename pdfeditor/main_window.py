@@ -246,6 +246,7 @@ class MainWindow(QMainWindow):
         view.status_message.connect(lambda m: self.statusBar().showMessage(m, 4000))
         view.selection_changed.connect(lambda s: self._on_selection_changed(s) if active() else None)
         view.tool_requested.connect(lambda t: self.select_tool(t) if active() else None)
+        view.pen_draw_requested.connect(lambda: self._auto_pen() if active() else None)
         view.text_edit_started.connect(lambda size: self._sync_font_spin(size) if active() else None)
         view.context_changed.connect(lambda k: self._on_context_changed(k) if active() else None)
         view.text_selection_changed.connect(lambda _: self._update_copy_actions() if active() else None)
@@ -1058,6 +1059,10 @@ class MainWindow(QMainWindow):
         self._apply_tool(tool)
         self.tool_actions[tool].setChecked(True)
 
+    def _auto_pen(self):
+        """Stift im Maus-Werkzeug über die Seite gezogen: zum zuletzt benutzten Stift bzw. Marker wechseln."""
+        self.select_tool(getattr(self, "_last_ink_tool", None) or "pen")
+
     def _set_finger_draw(self, on):
         """„Finger“ gehört zu den Modi neben Maus und Lasso: Einschalten wählt das zuletzt benutzte
         Zeichenwerkzeug (in Maus/Lasso zeichnet der Finger nicht), Maus bzw. Lasso schalten ihn wieder aus."""
@@ -1078,6 +1083,8 @@ class MainWindow(QMainWindow):
         from .page_view import FINGER_DRAW_TOOLS
         if tool in FINGER_DRAW_TOOLS:
             self._last_draw_tool = tool
+        if tool in ("pen", "highlighter"):
+            self._last_ink_tool = tool  # für den automatischen Wechsel beim Schreiben im Maus-Werkzeug
         elif tool in ("pan", "select") and self.act_finger_draw.isChecked():
             self.act_finger_draw.blockSignals(True)  # Maus/Lasso gewählt: Fingermodus aus (wie ein Modusknopf)
             self.act_finger_draw.setChecked(False)

@@ -138,6 +138,12 @@ class SettingsDialog(QDialog):
                                      "Werkzeug bleibt für weitere Einfügungen aktiv")
         self.after_insert.setChecked(prefs.after_insert_mouse())
         f.addRow(self.after_insert)
+        self.pen_auto = QCheckBox("Mit dem Stift schreiben schaltet vom Maus-Werkzeug automatisch zum Stift")
+        self.pen_auto.setToolTip("Im Maus-Werkzeug: Stift über die Seite ziehen wechselt zum zuletzt benutzten Stift "
+                                 "bzw. Marker und zeichnet sofort. Tippen bleibt ein Klick (z. B. auf einen Link), "
+                                 "Halten ein Rechtsklick.\nAus: Der Stift verschiebt im Maus-Werkzeug die Seite.")
+        self.pen_auto.setChecked(prefs.pen_auto_draw())
+        f.addRow(self.pen_auto)
         self.note_close = QCheckBox("Geöffnete Notiz schließt sich beim Tippen/Klicken daneben")
         self.note_close.setToolTip("Aus: Die Notiz bleibt offen, bis „Schließen“ gedrückt wird. "
                                    "Scrollen und Zoomen schließen sie nie.")
@@ -283,6 +289,7 @@ class SettingsDialog(QDialog):
         gestures.set_snap_degrees(self.snap.value())
         prefs.set_stroke_smoothing(self.smoothing.value())
         prefs.set_after_insert_mouse(self.after_insert.isChecked())
+        prefs.set_pen_auto_draw(self.pen_auto.isChecked())
         prefs.set_note_close_outside(self.note_close.isChecked())
         qs.setValue("start/ribbon_tab", self.start_tab.currentData())
         qs.setValue("start/sidebar", self.start_panel.currentData())

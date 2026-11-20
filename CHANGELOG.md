@@ -4,6 +4,7 @@ Neue Einträge kommen unter „Neu“ (eine Zeile je Änderung, beginnend mit �
 daraus den Abschnitt der neuen Version; das Programm zeigt ihn bei „Nach Updates suchen“ an.
 
 ## Neu
+- Mit dem Stift schreiben schaltet vom Maus-Werkzeug automatisch zum zuletzt benutzten Stift bzw. Marker (Tippen bleibt ein Klick; abschaltbar unter Einstellungen → Bedienung)
 - Striche und Marker zeichnet jetzt die Grafikkarte: bei jeder Zoomstufe sofort scharf, und nach neuen oder gelöschten Strichen muss nichts neu gerendert werden
 - Gescannte PDFs: Seitenbilder liegen direkt auf der Grafikkarte – Scrollen viel flüssiger (gemessen 17 → 93 Bilder/s), Zoomen sofort scharf
 - Beim Verschieben von Strichen zeigte die Vorschau verfälschte Farben (z. B. Blau zu blass)

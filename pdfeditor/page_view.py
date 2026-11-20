@@ -42,6 +42,7 @@ RESAMPLE_S = 0.010   # Touch-Resampling: Fingerposition so weit in der Vergangen
 HOLD_MS = 450        # Stift am Strichende so lange ruhig halten -> Form erkennen
 HOLD_SLOP = 4        # Bildschirmpixel, die der Stift beim Halten wackeln darf
 TOUCH_SLOP = 24      # so weit darf sich der Finger bewegen, ohne dass gescrollt wird
+PEN_DRAW_SLOP = 4    # Maus-Werkzeug: so weit (Bildschirmpixel) darf der Stift beim Tippen wackeln, sonst ist es ein Strich
 
 # Mit dem Finger zeichnen (Fingermodus): diese Werkzeuge
 FINGER_DRAW_TOOLS = ("pen", "highlighter", "eraser", "markup", "line", "arrow", "rect", "ellipse")
@@ -187,6 +188,7 @@ class PageView(QGraphicsView):
     context_changed = Signal(str)  # "", "image", "text", "note", "annot", "editing"
     text_selection_changed = Signal(bool)  # mit der Maus markierter Seitentext vorhanden?
     tool_requested = Signal(str)
+    pen_draw_requested = Signal()  # Stift im Maus-Werkzeug gezogen: zum zuletzt benutzten Stift/Marker wechseln
     text_edit_started = Signal(float)  # Schriftgröße des geöffneten Textfelds
     interacted = Signal()  # Maus/Stift/Finger auf der Seite -> dieser Tab wird aktiv
 
@@ -346,6 +348,7 @@ class PageView(QGraphicsView):
         self._zoom_settle.timeout.connect(self._zoom_settled)
         self._ghosts: dict[int, list] = {}  # Vorschau-Striche, bis die Seite neu gerendert ist
         self._gpu_only_change: dict[int, bool] = {}  # letzte Änderung der Seite betraf nur Grafikkarten-Striche
+        self._pen_pending = None  # Maus-Werkzeug: Stift aufgesetzt, noch unklar ob Strich oder Tippen
 
         document.changed.connect(self._on_doc_changed)
         document.about_to_modify.connect(self.commit_text_edit)
@@ -1276,25 +1279,49 @@ class PageView(QGraphicsView):
                 self._start_long_press(vpos, event.globalPosition().toPoint(), "pen")
             if tool == "pan":
                 self._link_press = (QPointF(vpos), self.link_at(self._to_scene(vpos)))
-                self._start_pan(vpos)
+                if prefs.pen_auto_draw() and self.page_at(self._to_scene(vpos)) is not None:
+                    # Maus-Werkzeug, Stift auf der Seite: erst beim Ziehen entscheiden – Strich (dann automatisch
+                    # zum Stift) oder Tippen (Klick auf Link/Video/Notiz); Halten bleibt ein Rechtsklick
+                    self._pen_pending = QPointF(vpos)
+                else:
+                    self._start_pan(vpos)
             else:
                 self._pen_down = True
                 self._press(self._to_scene(vpos), tool, vpos)
         elif t == QEvent.TabletMove:
             self._check_long_press_move(vpos)
-            if self._panning:
+            if self._pen_pending is not None:
+                if _len(QPointF(vpos) - self._pen_pending) > PEN_DRAW_SLOP:
+                    self._begin_auto_draw(vpos)
+            elif self._panning:
                 self._pan_to(vpos)
             elif self._pen_down:
                 self._move(self._to_scene(self._ruler_map(vpos)))
         elif t == QEvent.TabletRelease:
             self._long_timer.stop()
-            if self._panning:
+            if self._pen_pending is not None:  # nur getippt: Klick (Link, Video, Notiz)
+                self._pen_pending = None
+                self._finish_link_press(vpos, TOUCH_SLOP / 2)
+            elif self._panning:
                 self._end_pan()
                 self._finish_link_press(vpos, TOUCH_SLOP / 2)
             elif self._pen_down:
                 self._pen_down = False
                 self._release(self._to_scene(self._ruler_map(vpos)))
         return True
+
+    def _begin_auto_draw(self, vpos: QPointF):
+        """Stift im Maus-Werkzeug über die Seite gezogen: zum zuletzt benutzten Stift/Marker wechseln (Hauptfenster)
+        und den Strich am Aufsetzpunkt beginnen – nichts vom Anfang geht verloren."""
+        start, self._pen_pending = self._pen_pending, None
+        self._long_timer.stop()
+        self._link_press = None
+        self.pen_draw_requested.emit()  # direkte Verbindung: Werkzeug ist danach schon gewechselt
+        if self.tool == "pan":  # niemand verbunden (z. B. eigenständige Ansicht): einfacher Stift
+            self.set_tool("pen")
+        self._pen_down = True
+        self._press(self._to_scene(start), self.tool, start)
+        self._move(self._to_scene(self._ruler_map(vpos)))
 
     # ================================================================ Touch
     # Modi: "pending" (noch unklar: Tippen/Scrollen/langes Antippen), "scroll", "pinch",
@@ -2347,6 +2374,7 @@ class PageView(QGraphicsView):
                 self._menu_pending = (self._long_global, scene)
             return
         # Stift gedrückt halten
+        self._pen_pending = None  # Maus-Werkzeug: Halten ist ein Rechtsklick, kein Strich
         if self._moving or self._resizing:
             return  # Objekt wird schon verschoben
         self._cancel_interaction()
