@@ -345,6 +345,7 @@ class PageView(QGraphicsView):
         self._zoom_settle.setInterval(ZOOM_SETTLE_MS)
         self._zoom_settle.timeout.connect(self._zoom_settled)
         self._ghosts: dict[int, list] = {}  # Vorschau-Striche, bis die Seite neu gerendert ist
+        self._gpu_only_change: dict[int, bool] = {}  # letzte Änderung der Seite betraf nur Grafikkarten-Striche
 
         document.changed.connect(self._on_doc_changed)
         document.about_to_modify.connect(self.commit_text_edit)
@@ -624,7 +625,9 @@ class PageView(QGraphicsView):
             self.media.reposition()
         r = self.document.changed_rect  # nur dieser Bereich muss neu gerendert werden (None = ganze Seite)
         self.scans.page_changed(index)  # Seiteninhalt geändert? Dann ist es evtl. keine reine Scanseite mehr
-        if self.gpu and self.ink.tiles_unchanged(index):
+        gpu_only = self.gpu and self.ink.tiles_unchanged(index)
+        self._gpu_only_change[index] = gpu_only  # für _retire_preview: auf keine Kachel warten
+        if gpu_only:
             rect = QRectF()  # nur Striche der Grafikkarte betroffen: alle Kacheln bleiben gültig
         else:
             rect = QRectF(r.x0, r.y0, r.width, r.height) if r is not None else None
@@ -859,6 +862,12 @@ class PageView(QGraphicsView):
         ghost.setData(0, xref)
         self._ghosts.setdefault(index, []).append(ghost)
         self._preview = None
+        if xref is None and self._gpu_only_change.get(index):
+            # die Änderung (z. B. Durchkritzeln: Striche und Gekritzel gelöscht) betraf nur Striche der Grafikkarte –
+            # es kommt keine neu gerenderte Kachel, auf die die Vorschau warten könnte; die Grafikkarte zeigt den neuen
+            # Stand im nächsten Bild, die Vorschau verschwindet im selben
+            self._drop_ghost(index, ghost)
+            return
         QTimer.singleShot(4000, lambda: self._drop_ghost(index, ghost))  # Sicherheitsnetz (nur dieser Strich)
 
     def _gpu_ink_shown(self, index, xrefs):
