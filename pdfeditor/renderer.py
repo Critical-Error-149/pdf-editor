@@ -124,9 +124,14 @@ class TileRenderer(QObject):
         self.batch_heavy = True
         self.heavy = set()                        # Seiten mit teuren Kacheln
         self._checked = set()                     # Seiten, deren Bilder schon angesehen wurden
+        # Änderungszähler für die Grafikkarten-Ansicht: Sie baut ihre Seitenebene nur neu auf, wenn sich bei den
+        # Kacheln/Vorschauen einer sichtbaren Seite etwas geändert hat (page_version) bzw. alles (epoch)
+        self.page_version = defaultdict(int)
+        self.epoch = 0
 
     # ------------------------------------------------------------ Verwaltung
     def clear(self):
+        self.epoch += 1
         self._dl.clear()
         self._adl.clear()
         self.content.clear()
@@ -144,6 +149,7 @@ class TileRenderer(QObject):
 
     def drop_tiles(self):
         """Scharfe Kacheln freigeben (verdeckter Tab); die kleinen Seitenvorschauen bleiben erhalten."""
+        self.epoch += 1
         self.tiles.clear()
         self.levels.clear()
         self.pixels = 0
@@ -214,6 +220,7 @@ class TileRenderer(QObject):
         rect: nur dieser Bereich (Seitenkoordinaten) hat sich geändert – Kacheln außerhalb bleiben gültig."""
         old = self.gen[index]
         self.gen[index] += 1
+        self.page_version[index] += 1
         self._checked.discard(index)
         if rect is None:
             return
@@ -397,6 +404,7 @@ class TileRenderer(QObject):
                 self.content_base.move_to_end(index)
             pix = self._with_annots(content, self._annot_displaylist(index, page, gen), BASE_SCALE)
             self.base[index] = (_to_pixmap(pix, self.as_image), gen)
+            self.page_version[index] += 1
             self.base.move_to_end(index)
             while len(self.base) > BASE_BUDGET:
                 self.base.popitem(last=False)
@@ -438,6 +446,7 @@ class TileRenderer(QObject):
             self.pixels -= entry[0].width() * entry[0].height()
         target = QRectF(px / level, py / level, img.width() / level, img.height() / level)
         self.tiles[tkey] = (img, gen, target, (px, py))
+        self.page_version[tkey[0]] += 1
         self.tiles.move_to_end(tkey)
         self.levels[tkey[0]].add(level)
         self.pixels += img.width() * img.height()
@@ -497,6 +506,7 @@ class TileRenderer(QObject):
             self.content_pixels -= pix.width * pix.height
         while self.pixels > TILE_BUDGET and self.tiles:
             (index, level, _, _), (pm, *_) = self.tiles.popitem(last=False)
+            self.page_version[index] += 1
             self.pixels -= pm.width() * pm.height()
             if not any(k[0] == index and k[1] == level for k in self.tiles):
                 self.levels[index].discard(level)

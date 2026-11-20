@@ -32,7 +32,7 @@ from PySide6.QtGui import (QColor, QImage, QMatrix4x4, QPainter, QPainterPath, Q
 from PySide6.QtWidgets import QRhiWidget
 
 from . import theme
-from .renderer import MEMORY_SCALE, P_BASE, P_VISIBLE, TILE, level_for
+from .renderer import MEMORY_SCALE, P_BASE, P_PREFETCH, P_VISIBLE, TILE, level_for
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 FLOATS_PER_VERTEX = 8          # x, y, u, v, r, g, b, a
@@ -42,6 +42,14 @@ SCROLLBAR = 6                  # Breite des Bildlaufbalkens (logische Pixel), be
 SCROLLBAR_HOVER = 10
 SCROLLBAR_MARGIN = 3
 SCROLLBAR_MIN = 36
+# Kachel-Atlas: viele Kacheln in wenigen großen Texturen -> eine Handvoll Zeichenbefehle statt einem je Kachel
+ATLAS = 4096
+SLOT = 264                     # Platz je Kachel (256 + 1 Pixel Überstand je Seite, gerundet)
+ATLAS_BYTES = ATLAS * ATLAS * 4
+# Die Seitenebene (Ränder, Kacheln, Vorschauen) wird nur bei Änderungen neu aufgebaut und reicht so weit über die
+# Ansicht hinaus; Scrollen und Zoomen verschieben/skalieren sie nur (eigene Matrix) – wie bei GPUI: Unverändertes wird
+# wiederverwendet, die Grafikkarte setzt trotzdem jedes Bild komplett neu zusammen
+LAYER_MARGIN = 0.5             # Bildschirmhöhen bzw. -breiten
 
 APIS = {"d3d11": QRhiWidget.Api.Direct3D11, "d3d12": QRhiWidget.Api.Direct3D12}
 
@@ -118,6 +126,13 @@ class GpuViewport(QRhiWidget):
         self._bars = {}              # id(Quelle) -> Textur der Bedienleiste
         self._zombies = []           # Ressourcen eines verlorenen Geräts: nicht mehr anfassen, nur festhalten
         self._lost_reported = False
+        self._atlases = []           # [{"tex", "srbs": [nearest, linear]}]
+        self._slots: OrderedDict = OrderedDict()  # Bildschlüssel -> (Atlas, x, y, Breite, Höhe)
+        self._free = []              # freie Atlas-Plätze (Atlas, x, y)
+        self._atlas_epoch = 0        # erhöht, wenn ein belegter Platz neu vergeben wurde
+        self._layer = None           # zwischengespeicherte Seitenebene (siehe _page_layer)
+        self._layer_vbuf = None
+        self._layer_vbuf_size = 0
         # Gerät alle 2 s prüfen: Ohne neues Bild (z. B. Dialog offen) fiele ein Verlust sonst erst spät auf
         self._lost_check = QTimer(self)
         self._lost_check.setInterval(2000)
@@ -144,8 +159,10 @@ class GpuViewport(QRhiWidget):
             res += [st["srb"], *st["texs"], st.get("cbuf")]
         for st in self._bars.values():
             res += [st["srb"], st["tex"]]
-        for name in ("_white_srb", "_video_template", "_ps", "_video_ps", "_vbuf", "_ubuf", "_video_cbuf",
-                     "_white_tex", "_nearest", "_linear"):
+        for at in self._atlases:
+            res += [*at["srbs"], at["tex"]]
+        for name in ("_white_srb", "_white_page_srb", "_video_template", "_ps", "_video_ps", "_vbuf", "_layer_vbuf",
+                     "_ubuf", "_ubuf_pages", "_video_cbuf", "_white_tex", "_nearest", "_linear"):
             res.append(getattr(self, name, None))
         done = set()
         for r in res:
@@ -156,8 +173,8 @@ class GpuViewport(QRhiWidget):
                 except Exception:
                     pass
         self._reset()
-        for name in ("_white_srb", "_video_template", "_vbuf", "_ubuf", "_video_cbuf", "_white_tex",
-                     "_nearest", "_linear"):
+        for name in ("_white_srb", "_white_page_srb", "_video_template", "_vbuf", "_ubuf", "_ubuf_pages",
+                     "_video_cbuf", "_white_tex", "_nearest", "_linear"):
             setattr(self, name, None)
         self._pending_init = None  # Stapel des alten Geräts
         self._rhi = None
@@ -209,6 +226,13 @@ class GpuViewport(QRhiWidget):
         self._video_ps = None
         self._videos = {}
         self._bars = {}
+        self._atlases = []
+        self._slots = OrderedDict()
+        self._free = []
+        self._atlas_epoch += 1
+        self._layer = None
+        self._layer_vbuf = None
+        self._layer_vbuf_size = 0
 
     def initialize(self, cb):
         rhi = self.rhi()
@@ -228,11 +252,15 @@ class GpuViewport(QRhiWidget):
         self._linear.create()
         self._ubuf = rhi.newBuffer(QRhiBuffer.Dynamic, QRhiBuffer.UniformBuffer, 64)
         self._ubuf.create()
+        # eigene Matrix der Seitenebene (verschoben/skaliert gegenüber ihrem Aufbau)
+        self._ubuf_pages = rhi.newBuffer(QRhiBuffer.Dynamic, QRhiBuffer.UniformBuffer, 64)
+        self._ubuf_pages.create()
         white = QImage(4, 4, QImage.Format_RGBA8888)
         white.fill(Qt.white)
         self._white_tex = rhi.newTexture(QRhiTexture.RGBA8, white.size())
         self._white_tex.create()
         self._white_srb = self._make_srb(self._white_tex, self._nearest)
+        self._white_page_srb = self._make_srb(self._white_tex, self._nearest, self._ubuf_pages)
         self._pending_init = rhi.nextResourceUpdateBatch()
         self._pending_init.uploadTexture(self._white_tex, white)
 
@@ -288,27 +316,69 @@ class GpuViewport(QRhiWidget):
         srb.create()
         return srb
 
-    def _make_srb(self, tex, sampler):
+    def _make_srb(self, tex, sampler, ubuf=None):
         srb = self._rhi.newShaderResourceBindings()
         srb.setBindings([
-            QRhiShaderResourceBinding.uniformBuffer(0, QRhiShaderResourceBinding.VertexStage, self._ubuf),
+            QRhiShaderResourceBinding.uniformBuffer(0, QRhiShaderResourceBinding.VertexStage, ubuf or self._ubuf),
             QRhiShaderResourceBinding.sampledTexture(1, QRhiShaderResourceBinding.FragmentStage, tex, sampler)])
         srb.create()
         return srb
 
     # ------------------------------------------------------------ Texturen
-    def _cached_srb(self, key, linear):
-        """Bereits hochgeladene Textur zum Bildschlüssel (oder None) – ohne neu hochzuladen."""
-        entry = self._textures.get(key)
-        if entry is None:
+    def _atlas_slot(self, img: QImage, batch, keep):
+        """Platz einer Kachel im Atlas, bei Bedarf hochgeladen: (Atlas, x, y, Breite, Höhe) oder None (noch nicht
+        da – Hochladen pro Bild begrenzt). keep: Bildschlüssel, die in diesem Aufbau gebraucht werden."""
+        key = img.cacheKey()
+        slot = self._slots.get(key)
+        if slot is not None:
+            self._slots.move_to_end(key)
+            keep.add(key)
+            return slot
+        if self._uploads_left <= 0 or img.width() > SLOT or img.height() > SLOT:
             return None
-        i = 2 if linear else 1
-        if entry[i] is None:
-            entry[i] = self._make_srb(entry[0], self._linear if linear else self._nearest)
-        return entry[i]
+        place = self._take_slot(keep)
+        if place is None:
+            return None
+        self._uploads_left -= 1
+        ai, x, y = place
+        desc = QRhiTextureSubresourceUploadDescription(img)
+        desc.setDestinationTopLeft(QPoint(x, y))
+        batch.uploadTexture(self._atlases[ai]["tex"], QRhiTextureUploadDescription(QRhiTextureUploadEntry(0, 0, desc)))
+        slot = (ai, x, y, img.width(), img.height())
+        self._slots[key] = slot
+        keep.add(key)
+        return slot
+
+    def _take_slot(self, keep):
+        """Freien Atlas-Platz holen: frei, neuer Atlas (im Speicherbudget) oder die am längsten ungenutzte Kachel."""
+        if self._free:
+            return self._free.pop()
+        if not self._atlases or (len(self._atlases) + 1) * ATLAS_BYTES + self._tex_bytes <= TEX_BUDGET:
+            tex = self._rhi.newTexture(QRhiTexture.RGBA8, QSize(ATLAS, ATLAS))
+            tex.create()
+            ai = len(self._atlases)
+            self._atlases.append({"tex": tex, "srbs": [self._make_srb(tex, self._nearest, self._ubuf_pages),
+                                                       self._make_srb(tex, self._linear, self._ubuf_pages)]})
+            n = ATLAS // SLOT
+            self._free = [(ai, x * SLOT, y * SLOT) for y in range(n - 1, -1, -1) for x in range(n - 1, -1, -1)]
+            return self._free.pop()
+        for key in self._slots:
+            if key not in keep:
+                ai, x, y, _w, _h = self._slots.pop(key)
+                return ai, x, y
+        return None
+
+    def _slot_quad(self, slot, linear):
+        """Bindung und Texturkoordinaten eines Atlas-Platzes (weich gefiltert: einen halben Texel nach innen, damit
+        nichts vom Nachbarplatz durchscheint – die Kacheln überlappen sich um einen Pixel)."""
+        ai, x, y, sw, sh = slot
+        inset = 0.5 if linear else 0.0
+        return (self._atlases[ai]["srbs"][1 if linear else 0], (x + inset) / ATLAS, (y + inset) / ATLAS,
+                (x + sw - inset) / ATLAS, (y + sh - inset) / ATLAS)
 
     def _texture(self, img: QImage, batch, linear):
-        """Textur für ein Kachelbild (einmal hochgeladen, danach aus dem Speicher). None = noch nicht da."""
+        """Eigene Textur für ein Bild der Seitenebene (Seitenvorschau); einmal hochgeladen, danach aus dem Speicher.
+        None = noch nicht da."""
         key = img.cacheKey()
         entry = self._textures.get(key)
         if entry is None:
@@ -326,7 +396,7 @@ class GpuViewport(QRhiWidget):
             self._textures.move_to_end(key)
         i = 2 if linear else 1
         if entry[i] is None:
-            entry[i] = self._make_srb(entry[0], self._linear if linear else self._nearest)
+            entry[i] = self._make_srb(entry[0], self._linear if linear else self._nearest, self._ubuf_pages)
         return entry[i]
 
     def _evict(self, keep):
@@ -345,10 +415,17 @@ class GpuViewport(QRhiWidget):
         res = []
         for entry in self._textures.values():
             res += entry[2::-1]
+        for at in self._atlases:
+            res += [*at["srbs"], at["tex"]]
         self._discard(res)
         self._textures.clear()
         self._tex_bytes = 0
         self._shown.clear()
+        self._atlases = []
+        self._slots.clear()
+        self._free = []
+        self._atlas_epoch += 1
+        self._layer = None
 
     # ------------------------------------------------------------ Bild aufbauen
     def render(self, cb):
@@ -398,7 +475,8 @@ class GpuViewport(QRhiWidget):
             else:
                 draws.append([srb, 6, self._ps])
 
-        incomplete = self._pages(view, dpr, batch, quad)
+        layer = self._page_layer(view, dpr, batch, w, h)
+        incomplete = layer["dirty"]
         self._draw_videos(dpr, batch, quad)
         self._draw_overlay(view, dpr, batch, quad)
         self._draw_ruler(view, dpr, batch, quad, poly)
@@ -419,6 +497,15 @@ class GpuViewport(QRhiWidget):
         batch.updateDynamicBuffer(self._ubuf, 0, 64, array("f", mvp.data()).tobytes())
 
         cb.beginPass(self.renderTarget(), theme.CANVAS, QRhiDepthStencilClearValue(1.0, 0), batch)
+        if layer["draws"]:  # Seitenebene (eigener Puffer, eigene Matrix)
+            cb.setGraphicsPipeline(self._ps)
+            cb.setViewport(QRhiViewport(0, 0, w, h))
+            cb.setVertexInput(0, [(self._layer_vbuf, 0)])
+            first = 0
+            for srb, n, _ps in layer["draws"]:
+                cb.setShaderResources(srb)
+                cb.draw(n, 1, first, 0)
+                first += n
         if data:
             first = 0
             current = None
@@ -432,7 +519,7 @@ class GpuViewport(QRhiWidget):
                 cb.draw(n, 1, first, 0)
                 first += n
         cb.endPass()
-        self._evict(set())
+        self._evict(layer["used"])
         view._prefetch()
         # dem Renderer sagen, wann das nächste Bild fällig ist (Kacheln nur in der freien Zeit dazwischen)
         screen = self.screen()
@@ -562,26 +649,93 @@ class GpuViewport(QRhiWidget):
         return st
 
     # ---- Seiten
-    def _pages(self, view, dpr, batch, quad):
-        """Sichtbare Seiten als Kacheln. Gibt True zurück, wenn Texturen noch fehlen."""
+    def _page_layer(self, view, dpr, batch, w, h):
+        """Seitenebene (Ränder, Kacheln, Vorschauen): nur neu aufbauen, wenn sich etwas geändert hat – sonst wird
+        die vorhandene über ihre Matrix verschoben (Scrollen) bzw. skaliert (während des Zoomens)."""
+        r = view.renderer
+        vt = view.viewportTransform()
+        dev = vt.m11() * dpr
+        o = vt.map(QPointF(0, 0))
+        ox, oy = o.x() * dpr, o.y() * dpr
+        visible = view.visible_scene_rect()
+        zooming = r.zooming
+        # beim Zoomen wird die alte Ebene nur skaliert (wie bisher die vorhandenen Kacheln) – neu erst danach
+        key = (w, h, round(dpr, 6), None if zooming else level_for(dev), zooming, abs(vt.m12()) < 1e-9,
+               r.epoch, self._atlas_epoch, len(view.items_), theme.PAGE_EDGE.rgba())
+        layer = self._layer
+        if (layer is None or layer["dirty"] or layer["key"] != key or not layer["region"].contains(visible)
+                or any(r.page_version[i] != v for i, v in layer["versions"].items())):
+            layer = self._build_page_layer(view, dpr, batch, key, visible, ox, oy, dev)
+        k = dev / layer["dev"]
+        if abs(k - 1.0) < 1e-9:
+            tx, ty = round(ox), round(oy)  # ganze Gerätepixel: Kacheln bleiben 1:1 (scharf)
+        else:
+            tx, ty = ox, oy
+        m = QMatrix4x4()
+        m.ortho(0, w, h, 0, -1, 1)
+        m.translate(tx, ty)
+        m.scale(k, k)
+        batch.updateDynamicBuffer(self._ubuf_pages, 0, 64,
+                                  array("f", (self._rhi.clipSpaceCorrMatrix() * m).data()).tobytes())
+        return layer
+
+    def _build_page_layer(self, view, dpr, batch, key, visible, ox, oy, dev):
+        mx, my = visible.width() * LAYER_MARGIN, visible.height() * LAYER_MARGIN
+        region = visible.adjusted(-mx, -my, mx, my)
+        bx, by = round(ox), round(oy)  # Ebene in Gerätepixeln relativ zum Szenenursprung beim Aufbau
+        verts = array("f")
+        draws = []
+
+        def quad(srb, x, y, qw, qh, u0=0.0, v0=0.0, u1=1.0, v1=1.0, color=WHITE):
+            r_, g, b, a = color
+            x -= bx
+            y -= by
+            x1, y1 = x + qw, y + qh
+            verts.extend((x, y, u0, v0, r_, g, b, a, x, y1, u0, v1, r_, g, b, a, x1, y, u1, v0, r_, g, b, a,
+                          x1, y, u1, v0, r_, g, b, a, x, y1, u0, v1, r_, g, b, a, x1, y1, u1, v1, r_, g, b, a))
+            if draws and draws[-1][0] is srb:
+                draws[-1][1] += 6
+            else:
+                draws.append([srb, 6, self._ps])
+
+        used, versions = set(), {}
+        incomplete = self._pages(view, dpr, batch, quad, region, visible, used, versions)
+        data = verts.tobytes()
+        if data:
+            if self._layer_vbuf is None or self._layer_vbuf_size < len(data):
+                if self._layer_vbuf is not None:
+                    self._discard([self._layer_vbuf])
+                self._layer_vbuf_size = max(len(data), self._layer_vbuf_size * 2, 256 * 1024)
+                self._layer_vbuf = self._rhi.newBuffer(QRhiBuffer.Dynamic, QRhiBuffer.VertexBuffer,
+                                                       self._layer_vbuf_size)
+                self._layer_vbuf.create()
+            batch.updateDynamicBuffer(self._layer_vbuf, 0, len(data), data)
+        self.layer_builds = getattr(self, "layer_builds", 0) + 1
+        self._layer = {"key": key, "region": region, "versions": versions, "used": used, "dev": dev,
+                       "draws": draws, "dirty": incomplete}
+        return self._layer
+
+    def _pages(self, view, dpr, batch, quad, region, visible, used, versions):
+        """Seiten im Bereich region als Kacheln (fehlende werden für den sichtbaren Teil angefordert).
+        Gibt True zurück, wenn Texturen noch fehlen."""
         r = view.renderer
         vt = view.viewportTransform()
         s = vt.m11()
         dev = s * dpr
         level = level_for(dev)
         exact = abs(level - dev) < 1e-6 and abs(vt.m12()) < 1e-9
-        visible = view.visible_scene_rect()
         center = visible.center()
         edge = _premul(theme.PAGE_EDGE)
         incomplete = False
-        white = self._white_srb
+        white = self._white_page_srb
         for item in view.items_:
             br = item.sceneBoundingRect()
-            if not visible.intersects(br):
-                if br.top() > visible.bottom():
+            if not region.intersects(br):
+                if br.top() > region.bottom():
                     break
                 continue
             idx = item.index
+            versions[idx] = r.page_version[idx]
             o = vt.map(item.pos())
             ox, oy = o.x() * dpr, o.y() * dpr
             pw, ph = item.w * dev, item.h * dev
@@ -593,9 +747,10 @@ class GpuViewport(QRhiWidget):
             quad(white, ex - d1, ey, d1, eh, color=edge)
             quad(white, ex + ew, ey, d1, eh, color=edge)
             page_rect = item.page_rect()
-            exposed = visible.translated(-item.pos()).intersected(page_rect)
+            exposed = region.translated(-item.pos()).intersected(page_rect)
             if exposed.isEmpty():
                 continue
+            seen = visible.translated(-item.pos())  # sichtbarer Teil: nur dort fehlende Kacheln anfordern
 
             step = TILE / level
             tx0, tx1 = int(exposed.left() // step), int((exposed.right() - 1e-6) // step)
@@ -612,34 +767,40 @@ class GpuViewport(QRhiWidget):
                             continue
                     else:
                         missing.append(trect)
-                    if not r.zooming:
+                    if not r.zooming and trect.intersects(seen):
                         r.request(("tile", idx, level, tx, ty), (P_VISIBLE, (trect.center() - pcenter).manhattanLength()))
             base = r.get_base(idx)
             if base is None or r.is_stale(idx, base[1]):
-                r.request(("base", idx), (P_BASE, 0.0))
+                r.request(("base", idx), (P_BASE if br.intersects(visible) else P_PREFETCH, 0.0))
 
-            # Texturen der fertigen Kacheln vorab holen (Hochladen begrenzt -> Rest wie Lücken behandeln)
+            # Atlas-Plätze der fertigen Kacheln holen (Hochladen begrenzt -> Rest wie Lücken behandeln)
             tiles = []
             for entry, trect, tkey in ready:
-                srb = self._texture(entry[0], batch, not exact)
-                if srb is None:
+                slot = self._atlas_slot(entry[0], batch, used)
+                if slot is None:
                     incomplete = True
                     # neue Fassung der Kachel (z. B. nach einem Strich) noch nicht hochgeladen: die vorige
                     # weiter zeigen statt kurz die unscharfe Vorschau (sonst flackert es beim Schreiben)
                     prev = self._shown.get(tkey)
-                    psrb = self._cached_srb(prev[0], not exact) if prev is not None else None
-                    if psrb is None:
+                    pslot = self._slots.get(prev[0]) if prev is not None else None
+                    if pslot is None:
                         missing.append(trect)
                     else:
-                        tiles.append((prev[1], psrb))
+                        used.add(prev[0])
+                        tiles.append((prev[1], pslot))
                 else:  # nur Schlüssel und Lage merken (keine Bilder festhalten)
                     self._shown[tkey] = (entry[0].cacheKey(), (entry[0].size(), entry[1], entry[2], entry[3]))
-                    tiles.append((entry, srb))
+                    tiles.append((entry, slot))
             if len(self._shown) > 4096:
                 self._shown.clear()
 
             def dev_rect(pr: QRectF):
                 return ox + pr.x() * dev, oy + pr.y() * dev, pr.width() * dev, pr.height() * dev
+
+            def slot_rect(target: QRectF, slot):
+                """Kachel weich skaliert: Zielrechteck um einen halben Texel nach innen (passend zu _slot_quad)."""
+                hx, hy = target.width() / slot[3] * 0.5, target.height() / slot[4] * 0.5
+                return dev_rect(target.adjusted(hx, hy, -hx, -hy))
 
             if missing:
                 for m in missing:  # Papier
@@ -648,6 +809,7 @@ class GpuViewport(QRhiWidget):
                     bimg = base[0]
                     bsrb = self._texture(bimg, batch, True)
                     if bsrb is not None:
+                        used.add(bimg.cacheKey())
                         for m in missing:
                             quad(bsrb, *dev_rect(m), m.left() / item.w, m.top() / item.h,
                                  m.right() / item.w, m.bottom() / item.h)
@@ -664,19 +826,21 @@ class GpuViewport(QRhiWidget):
                         for tx in range(int(bounds.left() // st), int((bounds.right() - 1e-6) // st) + 1):
                             entry = r.tiles.get((idx, lv, tx, ty))
                             if entry is not None:
-                                srb = self._texture(entry[0], batch, True)
-                                if srb is not None:
-                                    quad(srb, *dev_rect(entry[2]))
+                                slot = self._atlas_slot(entry[0], batch, used)
+                                if slot is not None:
+                                    srb, u0, v0, u1, v1 = self._slot_quad(slot, True)
+                                    quad(srb, *slot_rect(entry[2], slot), u0, v0, u1, v1)
 
             if exact:  # 1:1 auf Gerätepixel (wie in der Software-Darstellung)
                 rx, ry = round(ox), round(oy)
-                for entry, srb in tiles:
-                    img = entry[0]
+                for entry, slot in tiles:
                     px, py = entry[3]
-                    quad(srb, rx + px, ry + py, img.width(), img.height())
+                    srb, u0, v0, u1, v1 = self._slot_quad(slot, False)
+                    quad(srb, rx + px, ry + py, slot[3], slot[4], u0, v0, u1, v1)
             else:
-                for entry, srb in tiles:
-                    quad(srb, *dev_rect(entry[2]))
+                for entry, slot in tiles:
+                    srb, u0, v0, u1, v1 = self._slot_quad(slot, True)
+                    quad(srb, *slot_rect(entry[2], slot), u0, v0, u1, v1)
         return incomplete
 
     # ---- Überlagerung (Striche in Arbeit, Auswahl, Textfeld, Suchtreffer …)

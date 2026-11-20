@@ -4,6 +4,7 @@ Neue Einträge kommen unter „Neu“ (eine Zeile je Änderung, beginnend mit �
 daraus den Abschnitt der neuen Version; das Programm zeigt ihn bei „Nach Updates suchen“ an.
 
 ## Neu
+- Schnellere Darstellung: Seitenkacheln liegen gesammelt auf der Grafikkarte und werden beim Scrollen und Zoomen wiederverwendet statt jedes Bild neu aufgebaut (Rechenzeit pro Bild beim Scrollen etwa halbiert, im Stillstand ein Fünftel, Zoomen schneller scharf)
 - Installationsprogramm: Häkchen der zusätzlichen Aufgaben waren bei hoher Bildschirmskalierung halb abgeschnitten
 
 ## 0.2.8 – 19.11.2026
