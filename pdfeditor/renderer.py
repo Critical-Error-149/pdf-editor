@@ -75,6 +75,15 @@ def level_for(scale: float) -> float:
     return max(0.05, min(MAX_LEVEL, round(scale, 6)))
 
 
+def _transparent_pixmap(irect) -> fitz.Pixmap:
+    """Leere, durchsichtige RGB-Pixmap. Mit MuPDFs Geräte-RGB angelegt: fitz.csRGB ist intern ein anderer Farbraum –
+    damit gezeichnete Anmerkungen kamen farbverfälscht heraus (reines Blau als (59, 83, 164))."""
+    pm = mupdf.fz_new_pixmap_with_bbox(mupdf.fz_device_rgb(), mupdf.FzIrect(irect.x0, irect.y0, irect.x1, irect.y1),
+                                       mupdf.FzSeparations(), 1)
+    mupdf.fz_clear_pixmap(pm)
+    return fitz.Pixmap(pm)
+
+
 def _to_pixmap(pix: fitz.Pixmap, as_image=False):
     img = QImage(pix.samples, pix.width, pix.height, pix.stride, QImage.Format_RGB888)
     if as_image:  # Grafikkarte: direkt als Textur hochladbar (RGBA), kein QPixmap nötig
@@ -128,10 +137,17 @@ class TileRenderer(QObject):
         # Kacheln/Vorschauen einer sichtbaren Seite etwas geändert hat (page_version) bzw. alles (epoch)
         self.page_version = defaultdict(int)
         self.epoch = 0
+        # Scanseiten, deren Bild die Grafikkarte selbst zeichnet (scan_pages.py): Kacheln enthalten dort nur die
+        # Anmerkungen (durchsichtig) und werden nur angefordert, wo Anmerkungen liegen (annot_rects)
+        self.scan_pages = set()
+        self.base_scale = BASE_SCALE
+        self._annot_rects = {}
 
     # ------------------------------------------------------------ Verwaltung
     def clear(self):
         self.epoch += 1
+        self.scan_pages.clear()
+        self._annot_rects.clear()
         self._dl.clear()
         self._adl.clear()
         self.content.clear()
@@ -161,6 +177,38 @@ class TileRenderer(QObject):
         heapq.heapify(self._heap)
         self._queued = {k: v for k, v in self._queued.items() if k[0] == "base"}
 
+    def drop_page(self, index):
+        """Alle Kacheln einer Seite verwerfen (z. B. wenn sie keine Scanseite mehr ist: die durchsichtigen
+        Anmerkungs-Kacheln dürfen nicht als Seiteninhalt erscheinen)."""
+        for key in [k for k in self.tiles if k[0] == index]:
+            pm = self.tiles.pop(key)[0]
+            self.pixels -= pm.width() * pm.height()
+        for key in [k for k in self.content if k[0] == index]:
+            pix = self.content.pop(key)
+            self.content_pixels -= pix.width * pix.height
+        self.levels.pop(index, None)
+        self.gen[index] += 1
+        self.page_version[index] += 1
+
+    def annot_rects(self, index):
+        """Rechtecke der Anmerkungen und Formularfelder (Seitenkoordinaten, etwas größer) – auf Scanseiten werden
+        nur dort Kacheln gebraucht."""
+        gen = self.gen[index]
+        cached = self._annot_rects.get(index)
+        if cached is not None and cached[0] == gen:
+            return cached[1]
+        rects = []
+        try:
+            page = self.document.page(index)
+            with self.document.reading():
+                for a in list(page.annots()) + list(page.widgets()):
+                    r = a.rect
+                    rects.append(QRectF(r.x0 - 2, r.y0 - 2, r.width + 4, r.height + 4))
+        except Exception:
+            pass
+        self._annot_rects[index] = (gen, rects)
+        return rects
+
     def set_hidden(self, index, xrefs, rect: QRectF | None = None):
         """Diese Anmerkungen beim Rendern der Seite weglassen (während sie verschoben werden); None = alle zeigen."""
         if xrefs:
@@ -186,8 +234,7 @@ class TileRenderer(QObject):
         ir = (bounds * fitz.Matrix(scale, scale)).irect
         if ir.width * ir.height > 40_000_000:  # riesig (z. B. sehr stark gezoomt): keine Vorschau
             return None
-        pix = fitz.Pixmap(fitz.csRGB, ir, 1)
-        pix.clear_with()  # ohne Wert: auch Alpha = 0 (durchsichtig); clear_with(0) machte es deckend schwarz
+        pix = _transparent_pixmap(ir)
         dev = mupdf.fz_new_draw_device(mupdf.FzMatrix(), pix.this)
         try:
             mupdf.fz_run_display_list(dl, dev, mupdf.FzMatrix(scale, 0, 0, scale, 0, 0),
@@ -291,7 +338,7 @@ class TileRenderer(QObject):
             top = self._heap[0][2]
             # am Stück nur, wenn der Seiteninhalt fehlt (nach einem Strich reicht die Anmerkungsebene)
             batch = self.batch_heavy and top[0] == "tile" and top[1] in self.heavy and \
-                (top[1], top[2], top[3], top[4]) not in self.content
+                top[1] not in self.scan_pages and (top[1], top[2], top[3], top[4]) not in self.content
             if batch and self.moving:
                 deferred = True  # Scanseite erst nach der Bewegung am Stück rendern (sonst Ruckler)
                 break
@@ -425,6 +472,8 @@ class TileRenderer(QObject):
         # 1 Gerätepixel Überstand, damit zwischen Kacheln keine feinen Nahtlinien entstehen
         bleed = 1.0 / level
         clip_b = fitz.Rect(clip.x0 - bleed, clip.y0 - bleed, clip.x1 + bleed, clip.y1 + bleed) & prect
+        if index in self.scan_pages and self.as_image:
+            return self._render_annot_tile(tkey, page, gen, clip, clip_b, level)
         content = self.content.get(tkey)
         if content is None:
             content = self._displaylist(index, page).get_pixmap(matrix=fitz.Matrix(level, level), clip=clip_b,
@@ -435,6 +484,25 @@ class TileRenderer(QObject):
         pix = self._with_annots(content, self._annot_displaylist(index, page, gen), level)
         qpm = _to_pixmap(pix, self.as_image)
         self._store(tkey, qpm, gen, pix.x, pix.y, level)
+        self._evict()
+        self.render_count += 1
+        return QRectF(clip.x0, clip.y0, clip.width, clip.height)
+
+    def _render_annot_tile(self, tkey, page, gen, clip, clip_b, level):
+        """Scanseite: nur die Anmerkungen der Kachel, auf durchsichtigem Grund (das Seitenbild zeichnet die
+        Grafikkarte darunter). MuPDF rechnet mit vormultipliziertem Alpha – genau das erwartet die Grafikkarte; das
+        Bild wird als RGBA8888 bezeichnet, damit beim Hochladen nichts umgerechnet wird."""
+        pix = _transparent_pixmap((clip_b * fitz.Matrix(level, level)).irect)
+        adl = self._annot_displaylist(tkey[0], page, gen)
+        if adl is not None:
+            dev = mupdf.fz_new_draw_device(mupdf.FzMatrix(), pix.this)
+            try:
+                mupdf.fz_run_display_list(adl, dev, mupdf.FzMatrix(level, 0, 0, level, 0, 0),
+                                          mupdf.fz_rect_from_irect(mupdf.fz_pixmap_bbox(pix.this)), mupdf.FzCookie())
+            finally:
+                mupdf.fz_close_device(dev)
+        img = QImage(pix.samples, pix.width, pix.height, pix.stride, QImage.Format_RGBA8888).copy()
+        self._store(tkey, img, gen, pix.x, pix.y, level)
         self._evict()
         self.render_count += 1
         return QRectF(clip.x0, clip.y0, clip.width, clip.height)

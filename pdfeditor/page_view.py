@@ -23,6 +23,7 @@ from .renderer import P_BASE, P_PREFETCH, P_VISIBLE, TILE, TileRenderer, level_f
 from .media import MediaController, kind_of as media_kind_of
 from . import prefs
 from .ruler import Ruler, format_length
+from .scan_pages import ScanPages
 from .touch_scroll import long_press_ms
 
 CLIP_MIME = "application/x-pdfeditor-annots"  # kopierte Objekte (kleines PDF) in der Zwischenablage
@@ -332,6 +333,9 @@ class PageView(QGraphicsView):
         self.renderer = TileRenderer(document, self._render_relevant, self)
         self.renderer.batch_heavy = settings.qs.value("scan_batch", "true") in (True, "true")
         self.renderer.tile_ready.connect(self._on_tile_ready)
+        # Scanseiten: Bild direkt als Textur (nur Grafikkarte, eingeschaltet in _setup_gpu)
+        self.scans = ScanPages(document, self.renderer, self)
+        self.scans.enabled = False
         self._zoom_settle = QTimer(self)
         self._zoom_settle.setSingleShot(True)
         self._zoom_settle.setInterval(ZOOM_SETTLE_MS)
@@ -389,6 +393,7 @@ class PageView(QGraphicsView):
         vp.device_lost.connect(self._gpu_lost)
         self.gpu = True
         self.renderer.as_image = True
+        self.scans.enabled = str(self.settings.qs.value("scan_textures", "true")).lower() == "true"
         self._swap_viewport(vp)
         # Ein Widget, das sich bei jedem Bild neu zeichnet (z. B. ein normaler Bildlaufbalken),
         # würde das ganze Fenster ausbremsen -> Balken zeichnet die Grafikkarte, Updates immer komplett
@@ -431,6 +436,8 @@ class PageView(QGraphicsView):
             return
         self.gpu = False
         self.renderer.as_image = False
+        self.scans.enabled = False
+        self.scans.clear()
         self.renderer.clear()
         self._overlay_cache = None
         for s in self._layer:  # Striche der Ebene zeigt jetzt wieder die Vorschau
@@ -607,6 +614,7 @@ class PageView(QGraphicsView):
         if hasattr(self, "media"):
             self.media.reposition()
         r = self.document.changed_rect  # nur dieser Bereich muss neu gerendert werden (None = ganze Seite)
+        self.scans.page_changed(index)  # Seiteninhalt geändert? Dann ist es evtl. keine reine Scanseite mehr
         self.renderer.invalidate_page(index, QRectF(r.x0, r.y0, r.width, r.height) if r is not None else None)
         if 0 <= index < len(self.items_):
             self.items_[index].invalidate()
@@ -617,6 +625,7 @@ class PageView(QGraphicsView):
         self._prefetch_dirty = True
         scene = self.scene()
         scene.clear()
+        self.scans.clear()
         self.renderer.clear()
         self._ghosts = {}
         self._live = None
@@ -721,10 +730,18 @@ class PageView(QGraphicsView):
         step = TILE / level
         for ty in range(int(part.top() // step), int((part.bottom() - 1e-6) // step) + 1):
             for tx in range(int(part.left() // step), int((part.right() - 1e-6) // step) + 1):
+                if not self._tile_needed(index, QRectF(tx * step, ty * step, step, step)):
+                    continue
                 entry = r.tiles.get((index, level, tx, ty))
                 if entry is None or r.is_stale(index, entry[1]):
                     return False
         return True
+
+    def _tile_needed(self, index, trect: QRectF):
+        """Auf Scanseiten (Bild zeichnet die Grafikkarte) braucht es Kacheln nur dort, wo Anmerkungen liegen."""
+        if index not in self.renderer.scan_pages:
+            return True
+        return any(trect.intersects(a) for a in self.renderer.annot_rects(index))
 
     def paintEvent(self, event):
         super().paintEvent(event)
@@ -791,8 +808,12 @@ class PageView(QGraphicsView):
                 continue
             idx = item.index
             dist = abs(br.center().y() - center.y())
+            if self.gpu:
+                self.scans.request(idx)  # Scanseite? Bild schon vorab dekodieren
+                if idx not in r.scan_pages and self.scans.maybe_scan(idx):
+                    continue  # erst prüfen – vorab rastern lohnt sich nur bei normalen Seiten
             base = r.base.get(idx)
-            if base is None or r.is_stale(idx, base[1]):
+            if idx not in r.scan_pages and (base is None or r.is_stale(idx, base[1])):
                 r.request(("base", idx), (P_PREFETCH, dist))
             if r.zooming:
                 continue
@@ -801,6 +822,8 @@ class PageView(QGraphicsView):
                 continue
             for ty in range(int(part.top() // step), int((part.bottom() - 1e-6) // step) + 1):
                 for tx in range(int(part.left() // step), int((part.right() - 1e-6) // step) + 1):
+                    if not self._tile_needed(idx, QRectF(tx * step, ty * step, step, step)):
+                        continue
                     entry = r.tiles.get((idx, level, tx, ty))
                     if entry is None or r.is_stale(idx, entry[1]):
                         trect = QRectF(tx * step, ty * step, step, step).translated(item.pos())

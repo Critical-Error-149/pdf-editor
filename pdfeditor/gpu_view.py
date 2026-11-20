@@ -162,7 +162,7 @@ class GpuViewport(QRhiWidget):
         for at in self._atlases:
             res += [*at["srbs"], at["tex"]]
         for name in ("_white_srb", "_white_page_srb", "_video_template", "_ps", "_video_ps", "_vbuf", "_layer_vbuf",
-                     "_ubuf", "_ubuf_pages", "_video_cbuf", "_white_tex", "_nearest", "_linear"):
+                     "_ubuf", "_ubuf_pages", "_video_cbuf", "_white_tex", "_nearest", "_linear", "_mip"):
             res.append(getattr(self, name, None))
         done = set()
         for r in res:
@@ -174,7 +174,7 @@ class GpuViewport(QRhiWidget):
                     pass
         self._reset()
         for name in ("_white_srb", "_white_page_srb", "_video_template", "_vbuf", "_ubuf", "_ubuf_pages",
-                     "_video_cbuf", "_white_tex", "_nearest", "_linear"):
+                     "_video_cbuf", "_white_tex", "_nearest", "_linear", "_mip"):
             setattr(self, name, None)
         self._pending_init = None  # Stapel des alten Geräts
         self._rhi = None
@@ -250,6 +250,10 @@ class GpuViewport(QRhiWidget):
         self._linear = rhi.newSampler(QRhiSampler.Linear, QRhiSampler.Linear, QRhiSampler.None_,
                                       QRhiSampler.ClampToEdge, QRhiSampler.ClampToEdge)
         self._linear.create()
+        # Scanseiten: Textur mit Verkleinerungsstufen (Mipmaps) – beim Verkleinern weich, ohne Flimmern
+        self._mip = rhi.newSampler(QRhiSampler.Linear, QRhiSampler.Linear, QRhiSampler.Linear,
+                                   QRhiSampler.ClampToEdge, QRhiSampler.ClampToEdge)
+        self._mip.create()
         self._ubuf = rhi.newBuffer(QRhiBuffer.Dynamic, QRhiBuffer.UniformBuffer, 64)
         self._ubuf.create()
         # eigene Matrix der Seitenebene (verschoben/skaliert gegenüber ihrem Aufbau)
@@ -399,6 +403,35 @@ class GpuViewport(QRhiWidget):
             entry[i] = self._make_srb(entry[0], self._linear if linear else self._nearest, self._ubuf_pages)
         return entry[i]
 
+    def _scan_texture(self, idx, source, batch, used):
+        """Textur des Scanbilds einer Seite (mit Mipmaps), höchstens eine neue pro Bild. None = noch nicht da."""
+        key, _bbox, img = source
+        tkey = ("scan", idx, key)
+        entry = self._textures.get(tkey)
+        if entry is None:
+            if img is None:  # Bild schon freigegeben, Textur aber verdrängt: neu dekodieren lassen
+                self.view.scans.texture_lost(idx, key)
+                return None
+            if self._scan_uploads_left <= 0:
+                return None
+            self._scan_uploads_left -= 1
+            tex = self._rhi.newTexture(QRhiTexture.BGRA8, img.size(), 1,
+                                       QRhiTexture.MipMapped | QRhiTexture.UsedWithGenerateMips)
+            tex.create()
+            batch.uploadTexture(tex, img)  # QImage RGB32 = BGRA im Speicher, passt ohne Umrechnen
+            batch.generateMips(tex)
+            nbytes = img.width() * img.height() * 16 // 3  # 4 Byte je Pixel, Mipmaps + 1/3
+            entry = [tex, None, None, nbytes]
+            self._textures[tkey] = entry
+            self._tex_bytes += nbytes
+            self.view.scans.uploaded(idx, key)
+        else:
+            self._textures.move_to_end(tkey)
+        used.add(tkey)
+        if entry[2] is None:
+            entry[2] = self._make_srb(entry[0], self._mip, self._ubuf_pages)
+        return entry[2]
+
     def _evict(self, keep):
         while self._tex_bytes > TEX_BUDGET and self._textures:
             key, entry = next(iter(self._textures.items()))
@@ -409,6 +442,8 @@ class GpuViewport(QRhiWidget):
             for r in entry[2::-1]:
                 if r is not None:
                     r.destroy()
+            if isinstance(key, tuple) and key[0] == "scan":
+                self.view.scans.texture_lost(key[1], key[2])
 
     def drop_textures(self):
         """Alle Kachel-Texturen verwerfen (z. B. nach einem neuen Dokument)."""
@@ -446,6 +481,7 @@ class GpuViewport(QRhiWidget):
         batch = self._pending_init or rhi.nextResourceUpdateBatch()
         self._pending_init = None
         self._uploads_left = MAX_UPLOADS
+        self._scan_uploads_left = 1
         self.frame_count += 1
         verts = array("f")
         draws = []  # (srb, Anzahl Ecken, Pipeline)
@@ -752,6 +788,44 @@ class GpuViewport(QRhiWidget):
                 continue
             seen = visible.translated(-item.pos())  # sichtbarer Teil: nur dort fehlende Kacheln anfordern
 
+            def dev_rect(pr: QRectF):
+                return ox + pr.x() * dev, oy + pr.y() * dev, pr.width() * dev, pr.height() * dev
+
+            def slot_rect(target: QRectF, slot):
+                """Kachel weich skaliert: Zielrechteck um einen halben Texel nach innen (passend zu _slot_quad)."""
+                hx, hy = target.width() / slot[3] * 0.5, target.height() / slot[4] * 0.5
+                return dev_rect(target.adjusted(hx, hy, -hx, -hy))
+
+            on_screen = br.intersects(visible)
+            scans = view.scans
+            scans.request(idx, urgent=on_screen)  # Scanseite? (sichtbare zuerst dekodieren)
+            scan = idx in r.scan_pages
+            base = r.get_base(idx)
+            # MuPDF-Vorschau: auf Scanseiten (bzw. Seiten, die vermutlich gleich eine werden) nur im Notfall
+            want_base = not scan and (on_screen or not scans.maybe_scan(idx))
+            if want_base and (base is None or r.is_stale(idx, base[1])):
+                r.request(("base", idx), (P_BASE if on_screen else P_PREFETCH, 0.0))
+            # Scanseite: Bild als Textur (sofort scharf in jeder Zoomstufe), Kacheln nur für die Anmerkungen darüber
+            if scan:
+                src = view.scans.texture_source(idx)
+                ssrb = self._scan_texture(idx, src, batch, used) if src is not None else None
+                quad(white, *dev_rect(exposed))  # Papier neben dem Bild
+                if ssrb is None:  # Textur kommt im nächsten Bild: bis dahin die Vorschau (falls schon vorhanden)
+                    incomplete = True
+                    bsrb = self._texture(base[0], batch, True) if base is not None else None
+                    if bsrb is not None:
+                        used.add(base[0].cacheKey())
+                        quad(bsrb, *dev_rect(exposed), exposed.left() / item.w, exposed.top() / item.h,
+                             exposed.right() / item.w, exposed.bottom() / item.h)
+                    continue
+                quad(ssrb, *dev_rect(src[1]))
+                annots = r.annot_rects(idx)
+            elif not on_screen and scans.maybe_scan(idx):
+                # gleich wohl eine Scanseite: keine teuren Kacheln vorab, nur Papier – sobald feststeht, was sie ist,
+                # meldet ScanPages das über page_version (die Ebene wird dann neu aufgebaut)
+                quad(white, *dev_rect(exposed))
+                continue
+
             step = TILE / level
             tx0, tx1 = int(exposed.left() // step), int((exposed.right() - 1e-6) // step)
             ty0, ty1 = int(exposed.top() // step), int((exposed.bottom() - 1e-6) // step)
@@ -759,8 +833,10 @@ class GpuViewport(QRhiWidget):
             ready, missing = [], []
             for ty in range(ty0, ty1 + 1):
                 for tx in range(tx0, tx1 + 1):
-                    entry = r.get_tile((idx, level, tx, ty))
                     trect = QRectF(tx * step, ty * step, step, step).intersected(page_rect)
+                    if scan and not any(trect.intersects(a) for a in annots):
+                        continue  # keine Anmerkung in dieser Kachel: das Scanbild genügt
+                    entry = r.get_tile((idx, level, tx, ty))
                     if entry is not None:
                         ready.append((entry, trect, (idx, level, tx, ty)))
                         if not r.is_stale(idx, entry[1]):
@@ -769,9 +845,6 @@ class GpuViewport(QRhiWidget):
                         missing.append(trect)
                     if not r.zooming and trect.intersects(seen):
                         r.request(("tile", idx, level, tx, ty), (P_VISIBLE, (trect.center() - pcenter).manhattanLength()))
-            base = r.get_base(idx)
-            if base is None or r.is_stale(idx, base[1]):
-                r.request(("base", idx), (P_BASE if br.intersects(visible) else P_PREFETCH, 0.0))
 
             # Atlas-Plätze der fertigen Kacheln holen (Hochladen begrenzt -> Rest wie Lücken behandeln)
             tiles = []
@@ -787,25 +860,17 @@ class GpuViewport(QRhiWidget):
                         missing.append(trect)
                     else:
                         used.add(prev[0])
-                        tiles.append((prev[1], pslot))
+                        tiles.append((prev[1], pslot, trect))
                 else:  # nur Schlüssel und Lage merken (keine Bilder festhalten)
                     self._shown[tkey] = (entry[0].cacheKey(), (entry[0].size(), entry[1], entry[2], entry[3]))
-                    tiles.append((entry, slot))
+                    tiles.append((entry, slot, trect))
             if len(self._shown) > 4096:
                 self._shown.clear()
 
-            def dev_rect(pr: QRectF):
-                return ox + pr.x() * dev, oy + pr.y() * dev, pr.width() * dev, pr.height() * dev
-
-            def slot_rect(target: QRectF, slot):
-                """Kachel weich skaliert: Zielrechteck um einen halben Texel nach innen (passend zu _slot_quad)."""
-                hx, hy = target.width() / slot[3] * 0.5, target.height() / slot[4] * 0.5
-                return dev_rect(target.adjusted(hx, hy, -hx, -hy))
-
             if missing:
-                for m in missing:  # Papier
+                for m in missing if not scan else ():  # Papier (Scanseite: das Bild liegt schon darunter)
                     quad(white, *dev_rect(m))
-                if base is not None:
+                if base is not None and not scan:
                     bimg = base[0]
                     bsrb = self._texture(bimg, batch, True)
                     if bsrb is not None:
@@ -831,17 +896,42 @@ class GpuViewport(QRhiWidget):
                                     srb, u0, v0, u1, v1 = self._slot_quad(slot, True)
                                     quad(srb, *slot_rect(entry[2], slot), u0, v0, u1, v1)
 
-            if exact:  # 1:1 auf Gerätepixel (wie in der Software-Darstellung)
+            if scan:  # durchsichtige Kacheln: nur der eigene Bereich (der Überstand würde Marker doppelt decken)
+                for entry, slot, trect in tiles:
+                    self._core_quad(quad, entry, slot, trect, exact, ox, oy, dev, dev_rect)
+            elif exact:  # 1:1 auf Gerätepixel (wie in der Software-Darstellung)
                 rx, ry = round(ox), round(oy)
-                for entry, slot in tiles:
+                for entry, slot, _trect in tiles:
                     px, py = entry[3]
                     srb, u0, v0, u1, v1 = self._slot_quad(slot, False)
                     quad(srb, rx + px, ry + py, slot[3], slot[4], u0, v0, u1, v1)
             else:
-                for entry, slot in tiles:
+                for entry, slot, _trect in tiles:
                     srb, u0, v0, u1, v1 = self._slot_quad(slot, True)
                     quad(srb, *slot_rect(entry[2], slot), u0, v0, u1, v1)
         return incomplete
+
+    def _core_quad(self, quad, entry, slot, trect, exact, ox, oy, dev, dev_rect):
+        """Kachel ohne ihren Überstand zeichnen: nur das Stück, das zum Kachelrechteck trect gehört."""
+        ai, sx, sy, sw, sh = slot
+        if exact:
+            px, py = entry[3]
+            rx, ry = round(ox), round(oy)
+            x0, y0 = round(trect.left() * dev), round(trect.top() * dev)
+            x1, y1 = round(trect.right() * dev), round(trect.bottom() * dev)
+            ix0, iy0 = max(0, x0 - px), max(0, y0 - py)
+            ix1, iy1 = min(sw, x1 - px), min(sh, y1 - py)
+            if ix1 <= ix0 or iy1 <= iy0:
+                return
+            quad(self._atlases[ai]["srbs"][0], rx + px + ix0, ry + py + iy0, ix1 - ix0, iy1 - iy0,
+                 (sx + ix0) / ATLAS, (sy + iy0) / ATLAS, (sx + ix1) / ATLAS, (sy + iy1) / ATLAS)
+        else:
+            t = entry[2]  # Bildrechteck der Kachel (Seitenkoordinaten, mit Überstand)
+            fx, fy = sw / t.width(), sh / t.height()
+            u0, v0 = (trect.left() - t.left()) * fx, (trect.top() - t.top()) * fy
+            u1, v1 = (trect.right() - t.left()) * fx, (trect.bottom() - t.top()) * fy
+            quad(self._atlases[ai]["srbs"][1], *dev_rect(trect), (sx + u0) / ATLAS, (sy + v0) / ATLAS,
+                 (sx + u1) / ATLAS, (sy + v1) / ATLAS)
 
     # ---- Überlagerung (Striche in Arbeit, Auswahl, Textfeld, Suchtreffer …)
     def _draw_overlay(self, view, dpr, batch, quad):
