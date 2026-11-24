@@ -697,7 +697,10 @@ class MediaController:
         self.view = view
         self.gifs = {}       # (seite, xref) -> (QLabel, QMovie, QBuffer, QByteArray)
         self.player = None   # (seite, xref, MediaPlayerWidget)
-        self._refresh_timer = QTimer()
+        self._closed = False  # Ansicht geschlossen (shutdown): nichts Neues mehr anstoßen
+        # Kind der Ansicht: verschwindet mit ihr. Ohne Elternobjekt überlebte der Zeitgeber das Schließen eines Tabs –
+        # wurde er beim Abbau noch einmal gestartet, griff refresh() auf die schon gelöschte Ansicht zu
+        self._refresh_timer = QTimer(view)
         self._refresh_timer.setSingleShot(True)
         self._refresh_timer.setInterval(60)
         self._refresh_timer.timeout.connect(self.refresh)
@@ -717,6 +720,8 @@ class MediaController:
 
     def reposition(self):
         """Beim Scrollen/Zoomen: vorhandene Widgets nachführen (günstig), neue Medien kurz danach anlegen."""
+        if self._closed:
+            return
         for (idx, xref), entry in list(self.gifs.items()):
             r = self._rect_of(idx, xref)
             if r is not None:
@@ -757,6 +762,8 @@ class MediaController:
 
     def refresh(self):
         """Animierte GIFs auf den sichtbaren Seiten anzeigen, andere entfernen."""
+        if self._closed:
+            return
         wanted = {}
         if self.gifs_enabled():
             for idx in self._visible_pages():
@@ -850,6 +857,7 @@ class MediaController:
 
     def shutdown(self):
         """Ansicht wird geschlossen: Wiedergabe sauber beenden, bevor Qt die Widgets abbaut."""
+        self._closed = True
         self._refresh_timer.stop()
         self.stop()
         for key in list(self.gifs):
@@ -860,4 +868,5 @@ class MediaController:
         self.stop()
         for key in list(self.gifs):
             self._drop_gif(key)
-        self._refresh_timer.start()
+        if not self._closed:
+            self._refresh_timer.start()

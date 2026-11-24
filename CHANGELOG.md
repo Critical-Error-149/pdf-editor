@@ -4,6 +4,7 @@ Neue Einträge kommen unter „Neu“ (eine Zeile je Änderung, beginnend mit �
 daraus den Abschnitt der neuen Version; das Programm zeigt ihn bei „Nach Updates suchen“ an.
 
 ## Neu
+- Nach dem Schließen eines Tabs konnte ein Fehler im Protokoll landen (interne Medien-Steuerung griff auf den geschlossenen Tab zu)
 
 ## 0.2.9 – 20.11.2026
 - Neue Download-Adresse: Der PDF Editor liegt jetzt öffentlich auf GitHub – https://github.com/Critical-Error-149/pdf-editor/releases/latest – bitte diesen Link speichern und zum Weitergeben verwenden. Der bisherige Download-Link (Gist) verweist nur noch dorthin; Updates kommen wie gewohnt über „Jetzt aktualisieren“
